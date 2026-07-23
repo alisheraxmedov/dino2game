@@ -100,5 +100,5 @@ $RECYCLE.BIN/
 .agents/
 .gemini/
 
-# Downloaded 2D components
-components
+# Downloaded 2D components — anchored, so it never swallows lib/game/components/
+/components

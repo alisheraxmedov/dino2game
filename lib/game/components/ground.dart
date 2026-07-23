@@ -3,14 +3,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
-
-class GrassBlade {
-  double x;
-  final double height;
-  final double sway;
-
-  GrassBlade({required this.x, required this.height, required this.sway});
-}
+import 'foliage.dart';
 
 class GroundRock {
   double x;
@@ -22,17 +15,18 @@ class GroundRock {
 }
 
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
+  /// Height of the ground plane: local y 0 is the horizon line, y [bandHeight]
+  /// is the front edge the runner stands on.
+  static const double bandHeight = 100.0;
+
   late Paint _horizonPaint;
   late Paint _horizonGlowPaint;
   late Paint _gridPaint;
-  late Paint _grassPaint;
   late Paint _rockPaint;
   late Paint _fogPaint;
 
   double _scrollOffset = 0.0;
-  double _grassTime = 0.0;
 
-  final List<GrassBlade> _grassBlades = [];
   final List<GroundRock> _rocks = [];
   final Random _random = Random();
 
@@ -56,32 +50,24 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
-    _grassPaint = Paint()
-      ..color = GameConstants.neonGreen.withAlpha(120)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
     _rockPaint = Paint()
       ..color = const Color(0xFF2A2A4A)
       ..style = PaintingStyle.fill;
 
     _fogPaint = Paint()..style = PaintingStyle.fill;
+
+    // A child, not a sibling: children render after their parent, so the plants
+    // are guaranteed to land on top of the terrain plane drawn below.
+    add(Foliage());
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    this.size = Vector2(size.x, 100);
-    position = Vector2(0, size.y - GameConstants.dinoGroundYOffset - 100);
+    this.size = Vector2(size.x, bandHeight);
+    position = Vector2(0, size.y - GameConstants.dinoGroundYOffset - bandHeight);
 
-    if (_grassBlades.isEmpty) {
-      for (int i = 0; i < 40; i++) {
-        _grassBlades.add(GrassBlade(
-          x: _random.nextDouble() * size.x,
-          height: _random.nextDouble() * 10 + 4,
-          sway: _random.nextDouble() * 2.0 + 0.5,
-        ));
-      }
+    if (_rocks.isEmpty) {
       for (int i = 0; i < 12; i++) {
         _rocks.add(GroundRock(
           x: _random.nextDouble() * size.x,
@@ -101,22 +87,11 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     // Signed speed: the grid and scatter run either way the player walks
     final speed = game.worldSpeed;
     _scrollOffset = _positiveMod(_scrollOffset + speed * dt, 60.0);
-    // Sway keeps breathing even while the player stands still
-    _grassTime += dt;
 
-    // Recycle margin sits outside every respawn position, so a blade that just
+    // Recycle margin sits outside every respawn position, so a rock that just
     // wrapped can never trip the opposite edge on the very next frame
     final screenWidth = game.size.x;
     const double margin = 100.0;
-    for (int i = 0; i < _grassBlades.length; i++) {
-      final blade = _grassBlades[i];
-      blade.x -= speed * dt * 0.7;
-      if (blade.x < -margin) {
-        blade.x = screenWidth + _random.nextDouble() * 50;
-      } else if (blade.x > screenWidth + margin) {
-        blade.x = -_random.nextDouble() * 50;
-      }
-    }
     for (int i = 0; i < _rocks.length; i++) {
       final rock = _rocks[i];
       rock.x -= speed * dt * 0.5;
@@ -203,21 +178,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       );
     }
 
-    // 5. Swaying grass blades
-    for (int i = 0; i < _grassBlades.length; i++) {
-      final blade = _grassBlades[i];
-      final swayOffset = sin(_grassTime * blade.sway + blade.x * 0.1) * 3.0;
-      _grassPaint.color = theme.grass.withAlpha(
-        (80 + 40 * sin(_grassTime * blade.sway)).toInt().clamp(40, 120),
-      );
-      canvas.drawLine(
-        Offset(blade.x, 3),
-        Offset(blade.x + swayOffset, 3 - blade.height),
-        _grassPaint,
-      );
-    }
-
-    // 6. Atmospheric fog near horizon
+    // 5. Atmospheric fog near horizon
     _fogPaint.shader = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,

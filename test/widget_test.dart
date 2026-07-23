@@ -1,6 +1,8 @@
 // Gameplay tests for the hold-to-move control scheme: the world only scrolls
 // while a control is held, and the score tracks forward progress only.
 
+import 'dart:math';
+
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,20 +15,22 @@ import 'package:dino2game/constants/game_constants.dart';
 import 'package:dino2game/constants/game_theme.dart';
 import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
+import 'package:dino2game/game/world_layout.dart';
 import 'package:dino2game/widgets/controls_overlay.dart';
 import 'package:dino2game/widgets/settings_overlay.dart';
 
 /// Stub overlay builders — the real widgets are exercised by the widget test.
 Map<String, OverlayWidgetBuilder<DinoGame>> _stubOverlays() => {
-      for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
-        name: (context, game) => const SizedBox.shrink(),
-    };
+  for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
+    name: (context, game) => const SizedBox.shrink(),
+};
 
 /// Boots a headless game instance and runs it until its components are mounted.
-Future<DinoGame> _bootGame() async {
-  final game = DinoGame();
+Future<DinoGame> _bootGame({Random? random}) async {
+  final game = DinoGame(random: random);
   _stubOverlays().forEach(
-    (name, builder) => game.overlays.addEntry(name, (context, _) => builder(context, game)),
+    (name, builder) =>
+        game.overlays.addEntry(name, (context, _) => builder(context, game)),
   );
   game.onGameResize(Vector2(800.0, 400.0));
   await game.onLoad();
@@ -108,7 +112,7 @@ void main() {
   });
 
   test('reversing finds obstacles behind the starting line', () async {
-    final game = await _bootGame();
+    final game = await _bootGame(random: Random(7));
     game.startGame();
 
     // Nothing is instantiated on the opening screen — that stretch is the runway
@@ -117,18 +121,25 @@ void main() {
     game.setInputDirection(-1);
     _tick(game, 3.0);
 
-    final behind = game.children.whereType<Obstacle>().toList();
-    expect(behind, isNotEmpty, reason: 'backing up must not walk onto an empty plain');
-    expect(behind.every((o) => o.worldX < 0), isTrue);
+    final behind = game.worldLayout.where((slot) => slot.worldX < 0).toList();
+    expect(
+      behind,
+      isNotEmpty,
+      reason: 'backing up must generate persistent world slots',
+    );
+    expect(behind.every((slot) => slot.worldX < 0), isTrue);
   });
 
   test('ground already walked keeps the same obstacles', () async {
-    final game = await _bootGame();
+    final game = await _bootGame(random: Random(7));
     game.startGame();
 
     game.setInputDirection(1);
     _tick(game, 4.0);
-    final aheadX = game.children.whereType<Obstacle>().map((o) => o.worldX).toSet();
+    final aheadX = game.worldLayout
+        .where((slot) => slot.kind != WorldEntityKind.coin && slot.live != null)
+        .map((slot) => slot.worldX)
+        .toSet();
     expect(aheadX, isNotEmpty);
 
     // Walk back over that same ground and out the other side
@@ -139,7 +150,10 @@ void main() {
     // ...then return: the obstacles are still standing where they were left
     game.setInputDirection(1);
     _tick(game, 6.0);
-    final returnedX = game.children.whereType<Obstacle>().map((o) => o.worldX).toSet();
+    final returnedX = game.worldLayout
+        .where((slot) => slot.kind != WorldEntityKind.coin && slot.live != null)
+        .map((slot) => slot.worldX)
+        .toSet();
     expect(returnedX.intersection(aheadX), isNotEmpty);
   });
 
@@ -163,8 +177,11 @@ void main() {
     expect(game.theme.isDay, isFalse);
 
     _tick(game, GameConstants.themeCycleSeconds - 1.0);
-    expect(game.theme.isDay, isFalse,
-        reason: 'the night has to hold for a full cycle before it turns');
+    expect(
+      game.theme.isDay,
+      isFalse,
+      reason: 'the night has to hold for a full cycle before it turns',
+    );
 
     _tick(game, GameConstants.themeTransitionSeconds + 1.5);
     expect(game.theme.isDay, isTrue);
@@ -178,10 +195,24 @@ void main() {
     game.startGame();
 
     // Night hold + crossfade + day hold + crossfade back
-    _tick(game, (GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds) * 2 + 1.0);
-    expect(game.theme.isDay, isFalse, reason: 'day has to give way to night again');
+    _tick(
+      game,
+      (GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds) *
+              2 +
+          1.0,
+    );
+    expect(
+      game.theme.isDay,
+      isFalse,
+      reason: 'day has to give way to night again',
+    );
 
-    _tick(game, GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds + 1.0);
+    _tick(
+      game,
+      GameConstants.themeCycleSeconds +
+          GameConstants.themeTransitionSeconds +
+          1.0,
+    );
     expect(game.theme.isDay, isTrue);
 
     game.startGame();
@@ -191,7 +222,12 @@ void main() {
   test('the sky stands still on the menu', () async {
     final game = await _bootGame();
 
-    _tick(game, GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds + 1.0);
+    _tick(
+      game,
+      GameConstants.themeCycleSeconds +
+          GameConstants.themeTransitionSeconds +
+          1.0,
+    );
 
     expect(game.isIntro, isTrue);
     expect(game.theme.isDay, isFalse);
@@ -205,14 +241,18 @@ void main() {
   });
 
   test('a saved runner is restored on launch, never asked for again', () async {
-    SharedPreferences.setMockInitialValues({GameConstants.characterKey: 'zombie'});
+    SharedPreferences.setMockInitialValues({
+      GameConstants.characterKey: 'zombie',
+    });
     final game = await _bootGame();
 
     expect(game.selectedCharacter.id, GameCharacter.zombie.id);
   });
 
   test('an unknown stored id falls back to the player', () async {
-    SharedPreferences.setMockInitialValues({GameConstants.characterKey: 'triceratops'});
+    SharedPreferences.setMockInitialValues({
+      GameConstants.characterKey: 'triceratops',
+    });
     final game = await _bootGame();
 
     expect(game.selectedCharacter.id, GameCharacter.player.id);
@@ -226,7 +266,10 @@ void main() {
 
     expect(game.selectedCharacter.id, GameCharacter.soldier.id);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(GameConstants.characterKey), GameCharacter.soldier.id);
+    expect(
+      prefs.getString(GameConstants.characterKey),
+      GameCharacter.soldier.id,
+    );
     // The pick is worthless if that sprite folder does not resolve
     expect(game.dino.loadedCharacter?.id, GameCharacter.soldier.id);
   });
@@ -237,13 +280,17 @@ void main() {
 
     for (final character in GameCharacter.all) {
       await game.dino.applyCharacter(character);
-      expect(game.dino.loadedCharacter?.id, character.id,
-          reason: 'the ${character.id} poses have to load from assets');
+      expect(
+        game.dino.loadedCharacter?.id,
+        character.id,
+        reason: 'the ${character.id} poses have to load from assets',
+      );
     }
   });
 
-  testWidgets('the settings screen offers every runner and saves the pick',
-      (WidgetTester tester) async {
+  testWidgets('the settings screen offers every runner and saves the pick', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
 
     final game = DinoGame();
@@ -280,11 +327,15 @@ void main() {
 
     expect(game.selectedCharacter.id, GameCharacter.zombie.id);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(GameConstants.characterKey), GameCharacter.zombie.id);
+    expect(
+      prefs.getString(GameConstants.characterKey),
+      GameCharacter.zombie.id,
+    );
   });
 
-  testWidgets('arrow keys reach the game even when the canvas has lost focus',
-      (WidgetTester tester) async {
+  testWidgets('arrow keys reach the game even when the canvas has lost focus', (
+    WidgetTester tester,
+  ) async {
     // Clicking START or REPLAY hands keyboard focus to that button, which used
     // to cut the canvas off from the keyboard for the rest of the run: taps kept
     // jumping, the arrow keys did nothing. A key handler above the GameWidget
@@ -334,7 +385,11 @@ void main() {
     game.startGame();
     thiefFocus.requestFocus();
     await tester.pump(const Duration(milliseconds: 16));
-    expect(gameFocus.hasFocus, isFalse, reason: 'the canvas must have lost focus');
+    expect(
+      gameFocus.hasFocus,
+      isFalse,
+      reason: 'the canvas must have lost focus',
+    );
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump(const Duration(milliseconds: 16));
@@ -345,8 +400,9 @@ void main() {
     expect(game.inputDirection, 0);
   });
 
-  testWidgets('touch pad holds a direction until the finger lifts',
-      (WidgetTester tester) async {
+  testWidgets('touch pad holds a direction until the finger lifts', (
+    WidgetTester tester,
+  ) async {
     // The pad only builds on touch platforms
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     // Without this the high-score channel never answers under fake async and

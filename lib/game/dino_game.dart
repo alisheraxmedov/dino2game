@@ -11,32 +11,18 @@ import 'components/dino.dart';
 import 'components/ground.dart';
 import 'components/obstacle.dart';
 import 'components/parallax_background.dart';
+import 'world_layout.dart';
 
 enum GameState { intro, playing, gameOver }
 
-/// One slot in the persistent world layout. The spec is generated once and kept
-/// forever; [live] is only the component currently instantiated for it, which is
-/// created and thrown away as the player streams past.
-class ObstacleSpec {
-  final double worldX;
-  final bool isBird;
-  final BirdHeight birdHeight;
-  final CactusType cactusType;
-  Obstacle? live;
+class DinoGame extends FlameGame
+    with HasCollisionDetection, TapCallbacks, KeyboardEvents {
+  DinoGame({Random? random}) : _random = random ?? Random();
 
-  ObstacleSpec({
-    required this.worldX,
-    required this.isBird,
-    required this.birdHeight,
-    required this.cactusType,
-  });
-}
-
-class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, KeyboardEvents {
   late Dino dino;
   late Ground ground;
   late ParallaxBackground background;
-  
+
   GameState _state = GameState.intro;
 
   /// Held control: -1 backward, 0 idle, +1 forward.
@@ -57,9 +43,14 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
   /// Persistent world layout. Every obstacle owns a fixed world coordinate, so
   /// the stretch behind the player is still there when they turn around.
-  final List<ObstacleSpec> _layout = [];
+  final List<WorldEntitySpec> _layout = [];
+  final List<ElevatedPlatformSpec> _platformLayout = [];
   double _frontierRight = 0.0;
   double _frontierLeft = 0.0;
+
+  List<WorldEntitySpec> get worldLayout => List.unmodifiable(_layout);
+  List<ElevatedPlatformSpec> get platformLayout =>
+      List.unmodifiable(_platformLayout);
 
   /// Camera position along the world in px. Screen X = worldX - worldOffset.
   double worldOffset = 0.0;
@@ -73,8 +64,9 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
   /// The palette every component draws with. Swapped as the day/night cycle
   /// advances, and published so the HUD and the touch pads follow along.
-  final ValueNotifier<GameTheme> themeNotifier =
-      ValueNotifier<GameTheme>(GameTheme.night);
+  final ValueNotifier<GameTheme> themeNotifier = ValueNotifier<GameTheme>(
+    GameTheme.night,
+  );
   GameTheme get theme => themeNotifier.value;
 
   /// 0 = night, 1 = day. Held at either end for [GameConstants.themeCycleSeconds]
@@ -90,7 +82,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
       ValueNotifier<GameCharacter>(GameCharacter.fallback);
   GameCharacter get selectedCharacter => characterNotifier.value;
 
-  final Random _random = Random();
+  final Random _random;
   SharedPreferences? _prefs;
 
   /// Hook the host widget sets so the canvas can take keyboard focus back after
@@ -109,8 +101,9 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     try {
       _prefs = await SharedPreferences.getInstance();
       highScore = _prefs?.getInt(GameConstants.highScoreKey) ?? 0;
-      characterNotifier.value =
-          GameCharacter.fromId(_prefs?.getString(GameConstants.characterKey));
+      characterNotifier.value = GameCharacter.fromId(
+        _prefs?.getString(GameConstants.characterKey),
+      );
     } catch (_) {
       // SharedPreferences might fail on unsupported web/desktop platforms,
       // fall back to a clean slate on the default character
@@ -133,8 +126,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   }
 
   void startGame() {
-    // Clear any active obstacles on restart
-    children.whereType<Obstacle>().forEach((obstacle) => obstacle.removeFromParent());
+    _clearWorld();
 
     // Reset game physics & parameters
     _state = GameState.playing;
@@ -145,7 +137,6 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     _maxDistance = 0.0;
 
     // Rebuild the world from scratch, leaving the first screen clear to start on
-    _layout.clear();
     _frontierRight = size.x;
     _frontierLeft = 0.0;
     currentScore = 0;
@@ -192,7 +183,8 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
     if (_shakeTimer > 0) {
       _shakeTimer -= dt;
-      _shakeIntensity = _maxShakeIntensity * (_shakeTimer / _shakeDuration).clamp(0.0, 1.0);
+      _shakeIntensity =
+          _maxShakeIntensity * (_shakeTimer / _shakeDuration).clamp(0.0, 1.0);
       if (_shakeTimer <= 0) _shakeIntensity = 0.0;
     }
 
@@ -205,13 +197,14 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
       final double target = inputDirection > 0
           ? GameConstants.maxRunSpeed
           : inputDirection < 0
-              ? -GameConstants.maxBackSpeed
-              : 0.0;
+          ? -GameConstants.maxBackSpeed
+          : 0.0;
 
       // Accelerate when pushing harder or turning around, decelerate when letting go
       final bool rampingUp =
           target.abs() > worldSpeed.abs() || target * worldSpeed < 0;
-      final double step = (rampingUp
+      final double step =
+          (rampingUp
               ? GameConstants.moveAcceleration
               : GameConstants.moveDeceleration) *
           dt;
@@ -229,7 +222,8 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
       // and re-walking old ground never earns them twice
       worldOffset += worldSpeed * dt;
       if (worldOffset > _maxDistance) _maxDistance = worldOffset;
-      final newScore = (_maxDistance / GameConstants.scoreDistanceDivisor).toInt();
+      final newScore = (_maxDistance / GameConstants.scoreDistanceDivisor)
+          .toInt();
       if (newScore != currentScore) {
         currentScore = newScore;
         scoreNotifier.value = currentScore;
@@ -249,8 +243,8 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     final int movementState = worldSpeed > GameConstants.movingThreshold
         ? 1
         : worldSpeed < -GameConstants.movingThreshold
-            ? -1
-            : 0;
+        ? -1
+        : 0;
     if (movementState != directionNotifier.value) {
       directionNotifier.value = movementState;
     }
@@ -260,9 +254,10 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   /// then turn around and do it again.
   void _advanceTheme(double dt) {
     if (_themeSwitching) {
-      _themeBlend = (_themeBlend +
-              _themeDirection * dt / GameConstants.themeTransitionSeconds)
-          .clamp(0.0, 1.0);
+      _themeBlend =
+          (_themeBlend +
+                  _themeDirection * dt / GameConstants.themeTransitionSeconds)
+              .clamp(0.0, 1.0);
       if (_themeBlend <= 0.0 || _themeBlend >= 1.0) {
         _themeSwitching = false;
         _themeHold = 0.0;
@@ -325,8 +320,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     worldSpeed = 0.0;
     directionNotifier.value = 0;
 
-    children.whereType<Obstacle>().forEach((obstacle) => obstacle.removeFromParent());
-    _layout.clear();
+    _clearWorld();
     worldOffset = 0.0;
     _maxDistance = 0.0;
     currentScore = 0;
@@ -337,6 +331,22 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     overlays.remove('GameOver');
     overlays.remove('Controls');
     overlays.add('MainMenu');
+  }
+
+  void _clearWorld() {
+    for (final slot in _layout) {
+      slot.live?.removeFromParent();
+      slot.live = null;
+    }
+    for (final platform in _platformLayout) {
+      platform.live?.removeFromParent();
+      platform.live = null;
+    }
+    for (final obstacle in children.whereType<Obstacle>().toList()) {
+      obstacle.removeFromParent();
+    }
+    _layout.clear();
+    _platformLayout.clear();
   }
 
   /// Called by the on-screen touch pad. -1 backward, 0 idle, +1 forward.
@@ -355,16 +365,17 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   /// always exists beyond both screen edges — including the ground behind the
   /// starting line, which reversing eventually reaches.
   void _ensureLayout() {
-    final double rightEdge = worldOffset + size.x + GameConstants.worldStreamMargin;
+    final double rightEdge =
+        worldOffset + size.x + GameConstants.worldStreamMargin;
     while (_frontierRight < rightEdge) {
       _frontierRight += _gapAt(_frontierRight);
-      _layout.add(_buildSpec(_frontierRight));
+      _buildWorldAt(_frontierRight);
     }
 
     final double leftEdge = worldOffset - GameConstants.worldStreamMargin;
     while (_frontierLeft > leftEdge) {
       _frontierLeft -= _gapAt(_frontierLeft);
-      _layout.add(_buildSpec(_frontierLeft));
+      _buildWorldAt(_frontierLeft);
     }
   }
 
@@ -379,19 +390,11 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
       final bool inWindow = spec.worldX >= from && spec.worldX <= to;
 
       if (inWindow && spec.live == null) {
-        final obstacle = spec.isBird
-            ? Bird(
-                heightLevel: spec.birdHeight,
-                screenHeight: size.y,
-                worldX: spec.worldX,
-              )
-            : Cactus(
-                type: spec.cactusType,
-                screenHeight: size.y,
-                worldX: spec.worldX,
-              );
-        spec.live = obstacle;
-        add(obstacle);
+        final obstacle = _transitionalObstacleFor(spec);
+        if (obstacle != null) {
+          spec.live = obstacle;
+          add(obstacle);
+        }
       } else if (!inWindow && spec.live != null) {
         spec.live!.removeFromParent();
         spec.live = null;
@@ -407,8 +410,8 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   /// Distance to the next obstacle: gaps tighten the further out the layout goes,
   /// with the same random jitter the timed spawner used to apply.
   double _gapAt(double worldX) {
-    final progress =
-        (_difficultyAt(worldX) / GameConstants.spawnRampScore).clamp(0.0, 1.0);
+    final progress = (_difficultyAt(worldX) / GameConstants.spawnRampScore)
+        .clamp(0.0, 1.0);
     final baseLimit = lerpDouble(
       GameConstants.initialSpawnDistance,
       GameConstants.minSpawnDistance,
@@ -417,47 +420,137 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     return baseLimit + _random.nextDouble() * GameConstants.spawnDistanceJitter;
   }
 
-  ObstacleSpec _buildSpec(double worldX) {
+  void _buildWorldAt(double worldX) {
     final difficulty = _difficultyAt(worldX);
+    final roll = _random.nextDouble();
 
-    // Only place birds past the 150 mark to ease users into the game
-    final canSpawnBird = difficulty > 150;
-    final spawnBirdChance = _random.nextDouble() < GameConstants.obstacleSpawnChanceBird;
+    if (roll < 0.16) {
+      final platform = ElevatedPlatformSpec(
+        worldX: worldX,
+        width: _random.nextBool() ? 260 : 340,
+      );
+      final containsHazard = _layout.any(
+        (slot) =>
+            slot.kind != WorldEntityKind.coin &&
+            slot.worldX >= platform.worldX &&
+            slot.worldX <= platform.worldX + platform.width,
+      );
+      final overlapsPlatform = _platformLayout.any(
+        (existing) => existing.containsWorldX(
+          platform.worldX,
+          platform.worldX + platform.width,
+        ),
+      );
+      if (containsHazard || overlapsPlatform) return;
 
-    final typeChoice = _random.nextDouble();
-    CactusType cactusType;
-
-    if (difficulty > 300) {
-      // Can spawn triple/large obstacles
-      if (typeChoice < 0.25) {
-        cactusType = CactusType.largeTriple;
-      } else if (typeChoice < 0.5) {
-        cactusType = CactusType.largeSingle;
-      } else if (typeChoice < 0.75) {
-        cactusType = CactusType.smallDouble;
-      } else {
-        cactusType = CactusType.smallSingle;
+      _platformLayout.add(platform);
+      final count = 2 + _random.nextInt(4);
+      for (var index = 0; index < count; index++) {
+        _layout.add(
+          WorldEntitySpec(
+            worldX:
+                platform.worldX + (index + 1) * platform.width / (count + 1),
+            kind: WorldEntityKind.coin,
+            elevation: platform.elevation + 36,
+          ),
+        );
       }
-    } else if (difficulty > 100) {
-      // Can spawn double obstacles
-      if (typeChoice < 0.4) {
-        cactusType = CactusType.smallDouble;
-      } else if (typeChoice < 0.7) {
-        cactusType = CactusType.smallSingle;
-      } else {
-        cactusType = CactusType.largeSingle;
-      }
-    } else {
-      // Small single/double cactus in the starting stretch
-      cactusType = typeChoice < 0.7 ? CactusType.smallSingle : CactusType.smallDouble;
+      return;
     }
 
-    return ObstacleSpec(
-      worldX: worldX,
-      isBird: canSpawnBird && spawnBirdChance,
-      birdHeight: _random.nextBool() ? BirdHeight.low : BirdHeight.high,
-      cactusType: cactusType,
+    if (roll < 0.32) {
+      final count = 1 + _random.nextInt(3);
+      for (var index = 0; index < count; index++) {
+        _layout.add(
+          WorldEntitySpec(
+            worldX: worldX + index * 42,
+            kind: WorldEntityKind.coin,
+          ),
+        );
+      }
+      return;
+    }
+
+    final kind = switch (roll) {
+      < 0.50 => WorldEntityKind.cactus,
+      < 0.68 => WorldEntityKind.spikeMan,
+      < 0.86 => WorldEntityKind.springMan,
+      _ when difficulty > 150 => WorldEntityKind.wingMan,
+      _ => WorldEntityKind.cactus,
+    };
+
+    if (_platformLayout.any(
+      (platform) =>
+          worldX >= platform.worldX &&
+          worldX <= platform.worldX + platform.width,
+    )) {
+      return;
+    }
+
+    _layout.add(
+      WorldEntitySpec(
+        worldX: worldX,
+        kind: kind,
+        wingHeight: _random.nextBool() ? WingHeight.low : WingHeight.high,
+        cactusVariant: _cactusVariantAt(difficulty),
+      ),
     );
+  }
+
+  CactusVariant _cactusVariantAt(double difficulty) {
+    final typeChoice = _random.nextDouble();
+
+    if (difficulty > 300) {
+      if (typeChoice < 0.25) {
+        return CactusVariant.largeTriple;
+      }
+      if (typeChoice < 0.5) {
+        return CactusVariant.largeSingle;
+      }
+      if (typeChoice < 0.75) {
+        return CactusVariant.smallDouble;
+      }
+      return CactusVariant.smallSingle;
+    }
+
+    if (difficulty > 100) {
+      if (typeChoice < 0.4) {
+        return CactusVariant.smallDouble;
+      }
+      if (typeChoice < 0.7) {
+        return CactusVariant.smallSingle;
+      }
+      return CactusVariant.largeSingle;
+    }
+
+    return typeChoice < 0.7
+        ? CactusVariant.smallSingle
+        : CactusVariant.smallDouble;
+  }
+
+  Obstacle? _transitionalObstacleFor(WorldEntitySpec spec) {
+    if (spec.kind == WorldEntityKind.coin) return null;
+    if (spec.kind == WorldEntityKind.wingMan) {
+      return Bird(
+        heightLevel: spec.wingHeight == WingHeight.low
+            ? BirdHeight.low
+            : BirdHeight.high,
+        screenHeight: size.y,
+        worldX: spec.worldX,
+      );
+    }
+
+    final cactusType = switch (spec.kind) {
+      WorldEntityKind.spikeMan => CactusType.smallSingle,
+      WorldEntityKind.springMan => CactusType.smallDouble,
+      _ => switch (spec.cactusVariant) {
+        CactusVariant.smallSingle => CactusType.smallSingle,
+        CactusVariant.smallDouble => CactusType.smallDouble,
+        CactusVariant.largeSingle => CactusType.largeSingle,
+        CactusVariant.largeTriple => CactusType.largeTriple,
+      },
+    };
+    return Cactus(type: cactusType, screenHeight: size.y, worldX: spec.worldX);
   }
 
   @override
@@ -484,7 +577,10 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   };
 
   @override
-  KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+  KeyEventResult onKeyEvent(
+    KeyEvent event,
+    Set<LogicalKeyboardKey> keysPressed,
+  ) {
     if (!isPlaying) return KeyEventResult.ignored;
 
     // Re-derive the direction from what is physically held right now, so key

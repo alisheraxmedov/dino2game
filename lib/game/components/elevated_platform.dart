@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
@@ -11,16 +12,20 @@ class ElevatedPlatform extends PositionComponent
   static const double platformHeight = 64;
 
   final ElevatedPlatformSpec spec;
+  final Future<List<Sprite>> Function() _spriteLoader;
 
   Sprite? _nightSprite;
   Sprite? _daySprite;
 
-  ElevatedPlatform({required this.spec})
-    : super(
-        position: Vector2(spec.worldX, 0),
-        size: Vector2(spec.width, platformHeight),
-        priority: 2,
-      );
+  ElevatedPlatform({
+    required this.spec,
+    @visibleForTesting Future<List<Sprite>> Function()? spriteLoader,
+  }) : _spriteLoader = spriteLoader ?? _loadSprites,
+       super(
+         position: Vector2(spec.worldX, 0),
+         size: Vector2(spec.width, platformHeight),
+         priority: 2,
+       );
 
   static String assetName({required bool isDay}) => isDay
       ? 'environment/ground_wood_broken.png'
@@ -28,15 +33,19 @@ class ElevatedPlatform extends PositionComponent
 
   String get activeAssetName => assetName(isDay: game.theme.isDay);
 
+  static Future<List<Sprite>> _loadSprites() => Future.wait([
+    Sprite.load(assetName(isDay: false)),
+    Sprite.load(assetName(isDay: true)),
+  ]);
+
   @override
   Future<void> onLoad() async {
-    final loaded = await Future.wait([
-      Sprite.load(assetName(isDay: false)),
-      Sprite.load(assetName(isDay: true)),
-    ]);
+    // Cache the owning game while attached. Sprite decoding can finish after a
+    // streaming removal, when walking the parent tree would no longer be safe.
+    _syncPosition();
+    final loaded = await _spriteLoader();
     _nightSprite = loaded[0];
     _daySprite = loaded[1];
-    _syncPosition();
   }
 
   void _syncPosition() {

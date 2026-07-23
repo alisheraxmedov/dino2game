@@ -19,6 +19,15 @@ class GroundRock {
   });
 }
 
+class _GroundTerrainLoader extends Component {
+  final Ground ground;
+
+  _GroundTerrainLoader(this.ground);
+
+  @override
+  Future<void> onLoad() => ground._loadTerrainSprites();
+}
+
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
   /// Height of the ground plane: local y 0 is the horizon line, y [bandHeight]
   /// is the front edge the runner stands on.
@@ -54,7 +63,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
         ];
 
   @override
-  Future<void> onLoad() async {
+  void onLoad() {
     _horizonPaint = Paint()
       ..color = GameConstants.neonCyan
       ..strokeWidth = 2.5
@@ -77,6 +86,16 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
 
     _fogPaint = Paint()..style = PaintingStyle.fill;
 
+    // Child loaders begin inside Flame's lifecycle instead of whichever async
+    // zone constructed the Ground (notably WidgetTester's fake async zone).
+    add(_GroundTerrainLoader(this));
+
+    // A child, not a sibling: children render after their parent, so the plants
+    // are guaranteed to land on top of the terrain plane drawn below.
+    add(Foliage());
+  }
+
+  Future<void> _loadTerrainSprites() async {
     final terrainSprites = await Future.wait(
       [
         ...terrainAssetNames(isDay: false),
@@ -85,10 +104,6 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     );
     _nightTerrainSprites = terrainSprites.sublist(0, 2);
     _dayTerrainSprites = terrainSprites.sublist(2, 4);
-
-    // A child, not a sibling: children render after their parent, so the plants
-    // are guaranteed to land on top of the terrain plane drawn below.
-    add(Foliage());
   }
 
   @override

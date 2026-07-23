@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:math';
 
+import 'package:flame/components.dart' show Sprite;
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -175,6 +177,38 @@ void main() {
       );
     },
   );
+
+  test('removing a platform while sprites load clears it safely', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = ElevatedPlatformSpec(worldX: 200, width: 240, elevation: 90);
+    final loadedSprites = await Future.wait([
+      Sprite.load(ElevatedPlatform.assetName(isDay: false)),
+      Sprite.load(ElevatedPlatform.assetName(isDay: true)),
+    ]);
+    final spriteLoad = Completer<List<Sprite>>();
+    final platform = ElevatedPlatform(
+      spec: spec,
+      spriteLoader: () => spriteLoad.future,
+    );
+    spec.live = platform;
+
+    game.add(platform);
+    game.update(0);
+    platform.removeFromParent();
+    spec.live = null;
+    game.update(0);
+
+    expect(
+      platform.findGame(),
+      same(game),
+      reason: 'async loading must retain its owning game after detachment',
+    );
+    spriteLoad.complete(loadedSprites);
+    await game.ready();
+    expect(spec.live, isNull);
+    expect(game.children, isNot(contains(platform)));
+  });
 
   test('platforms stream out, return, and clear safely across runs', () async {
     final game = await _bootGame();

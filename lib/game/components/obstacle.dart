@@ -7,6 +7,7 @@ import 'package:flame/components.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
 import '../world_layout.dart';
+import 'sprite_layout.dart';
 
 abstract class Obstacle extends PositionComponent
     with CollisionCallbacks, HasGameReference<DinoGame> {
@@ -95,7 +96,14 @@ abstract class Obstacle extends PositionComponent
   }
 
   void renderLoadedSprite(Canvas canvas) {
-    currentFrame.render(canvas, position: Vector2.zero(), size: size);
+    currentFrame.renderRect(
+      canvas,
+      containedSpriteRect(
+        sourceSize: currentFrame.srcSize,
+        boundsSize: size,
+        alignmentY: 1,
+      ),
+    );
   }
 }
 
@@ -152,10 +160,14 @@ class Cactus extends Obstacle {
   @override
   void renderLoadedSprite(Canvas canvas) {
     for (var index = 0; index < _count; index++) {
-      currentFrame.render(
+      currentFrame.renderRect(
         canvas,
-        position: Vector2(index * _singleSize.x, 0),
-        size: _singleSize,
+        containedSpriteRect(
+          sourceSize: currentFrame.srcSize,
+          boundsSize: _singleSize,
+          origin: Offset(index * _singleSize.x, 0),
+          alignmentY: 1,
+        ),
       );
     }
   }

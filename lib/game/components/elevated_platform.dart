@@ -9,7 +9,8 @@ import '../world_layout.dart';
 
 class ElevatedPlatform extends PositionComponent
     with HasGameReference<DinoGame> {
-  static const double platformHeight = 64;
+  static const double sourceWidth = 380;
+  static const double sourceHeight = 94;
 
   final ElevatedPlatformSpec spec;
   final Future<List<Sprite>> Function() _spriteLoader;
@@ -23,7 +24,7 @@ class ElevatedPlatform extends PositionComponent
   }) : _spriteLoader = spriteLoader ?? _loadSprites,
        super(
          position: Vector2(spec.worldX, 0),
-         size: Vector2(spec.width, platformHeight),
+         size: Vector2(spec.width, spec.width * sourceHeight / sourceWidth),
          priority: 2,
        );
 
@@ -43,9 +44,16 @@ class ElevatedPlatform extends PositionComponent
     // Cache the owning game while attached. Sprite decoding can finish after a
     // streaming removal, when walking the parent tree would no longer be safe.
     _syncPosition();
-    final loaded = await _spriteLoader();
-    _nightSprite = loaded[0];
-    _daySprite = loaded[1];
+    try {
+      final loaded = await _spriteLoader();
+      _nightSprite = loaded[0];
+      _daySprite = loaded[1];
+    } catch (_) {
+      // A platform without its sprites must not leave an invisible landing
+      // surface behind. Disable its persistent slot for the rest of this run.
+      spec.available = false;
+      removeFromParent();
+    }
   }
 
   void _syncPosition() {

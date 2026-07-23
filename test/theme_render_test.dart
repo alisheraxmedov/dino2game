@@ -2,6 +2,7 @@
 // inside a real widget so its components get mounted and sized, then the same
 // scene is rasterised at both ends of the crossfade and compared pixel by pixel.
 
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flame/game.dart';
@@ -55,6 +56,30 @@ void main() {
       'environment/ground_grass_small_broken.png',
     ]);
   });
+
+  test(
+    'a failed terrain sprite load keeps the fallback ground usable',
+    () async {
+      final loadAttempted = Completer<void>();
+      final game = DinoGame();
+      game.onGameResize(Vector2(_width.toDouble(), _height.toDouble()));
+      await game.onLoad();
+      await game.ready();
+      final ground = Ground(
+        terrainLoader: () async {
+          loadAttempted.complete();
+          throw StateError('missing terrain sprite');
+        },
+      );
+
+      await game.add(ground);
+      await loadAttempted.future;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(ground.isLoaded, isTrue);
+      expect(ground.isRemoving, isFalse);
+    },
+  );
 
   test('elevated platforms map night and day to distinct terrain', () {
     expect(

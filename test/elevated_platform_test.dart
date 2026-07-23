@@ -210,6 +210,40 @@ void main() {
     expect(game.children, isNot(contains(platform)));
   });
 
+  test('a failed platform sprite load disables invisible support', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = ElevatedPlatformSpec(worldX: 40, width: 240, elevation: 90);
+    final platform = ElevatedPlatform(
+      spec: spec,
+      spriteLoader: () =>
+          Future<List<Sprite>>.error(StateError('missing platform sprite')),
+    );
+    game.addPlatformSpecForTest(spec);
+    spec.live = platform;
+
+    game.add(platform);
+    await game.ready();
+    game.update(0);
+
+    final top = _platformTop(game, spec);
+    expect(spec.live, isNull);
+    expect(game.children, isNot(contains(platform)));
+    expect(
+      game.hasPlatformSupport(worldLeft: 80, worldRight: 120, feetY: top),
+      isFalse,
+    );
+    expect(
+      game.landingSurfaceY(
+        worldLeft: 80,
+        worldRight: 120,
+        previousFeetY: top - 1,
+        currentFeetY: top + 1,
+      ),
+      isNull,
+    );
+  });
+
   test('platforms stream out, return, and clear safely across runs', () async {
     final game = await _bootGame();
     game.startGame();

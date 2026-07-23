@@ -394,6 +394,7 @@ class DinoGame extends FlameGame
   }) {
     double? highestSurface;
     for (final platform in _platformLayout) {
+      if (!platform.available) continue;
       final surfaceY =
           size.y - GameConstants.dinoGroundYOffset - platform.elevation;
       if (platform.containsWorldX(worldLeft, worldRight) &&
@@ -413,6 +414,7 @@ class DinoGame extends FlameGame
   }) {
     const supportTolerance = 0.01;
     return _platformLayout.any((platform) {
+      if (!platform.available) return false;
       final surfaceY =
           size.y - GameConstants.dinoGroundYOffset - platform.elevation;
       return platform.containsWorldX(worldLeft, worldRight) &&
@@ -458,7 +460,7 @@ class DinoGame extends FlameGame
     final double to = worldOffset + size.x + GameConstants.worldStreamMargin;
 
     for (final spec in _layout) {
-      if (spec.collected) {
+      if (spec.collected || !spec.available) {
         spec.live?.removeFromParent();
         spec.live = null;
         continue;
@@ -486,6 +488,11 @@ class DinoGame extends FlameGame
     final double to = worldOffset + size.x + GameConstants.worldStreamMargin;
 
     for (final spec in _platformLayout) {
+      if (!spec.available) {
+        spec.live?.removeFromParent();
+        spec.live = null;
+        continue;
+      }
       final inWindow = spec.worldX + spec.width >= from && spec.worldX <= to;
       if (inWindow && spec.live == null) {
         final component = ElevatedPlatform(spec: spec);

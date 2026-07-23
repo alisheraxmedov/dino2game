@@ -289,6 +289,31 @@ void main() {
     expect(spec.collected, isTrue);
   });
 
+  test('a failed coin sprite load safely skips the collectible', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = WorldEntitySpec(
+      worldX: game.worldOffset + 200,
+      kind: WorldEntityKind.coin,
+    );
+    final coin = Coin(
+      spec: spec,
+      screenHeight: game.size.y,
+      spriteLoader: () =>
+          Future<List<Sprite>>.error(StateError('missing coin sprite')),
+    );
+    game.addWorldSpecForTest(spec);
+    spec.live = coin;
+
+    await game.add(coin);
+    game.update(0);
+    game.streamWorldForTest();
+
+    expect(game.isPlaying, isTrue);
+    expect(spec.live, isNull);
+    expect(game.children.whereType<Coin>(), isEmpty);
+  });
+
   test('a collected streamed coin never respawns', () async {
     final game = await _bootGame();
     game.startGame();

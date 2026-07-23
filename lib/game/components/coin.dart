@@ -2,10 +2,12 @@ import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
 import '../world_layout.dart';
+import 'sprite_layout.dart';
 
 class Coin extends PositionComponent
     with CollisionCallbacks, HasGameReference<DinoGame> {
@@ -13,30 +15,45 @@ class Coin extends PositionComponent
   static const double frameTime = 0.10;
 
   final WorldEntitySpec spec;
+  final Future<List<Sprite>> Function() _spriteLoader;
 
   List<Sprite> _frames = const [];
   double _frameElapsed = 0;
   int _frameIndex = 0;
 
-  Coin({required this.spec, required double screenHeight})
-    : super(
-        position: Vector2(
-          spec.worldX,
-          screenHeight - GameConstants.dinoGroundYOffset - spec.elevation,
-        ),
-        size: coinSize.clone(),
-        priority: 2,
-      );
+  Coin({
+    required this.spec,
+    required double screenHeight,
+    @visibleForTesting Future<List<Sprite>> Function()? spriteLoader,
+  }) : _spriteLoader = spriteLoader ?? _loadSprites,
+       super(
+         position: Vector2(
+           spec.worldX,
+           screenHeight - GameConstants.dinoGroundYOffset - spec.elevation,
+         ),
+         size: coinSize.clone(),
+         priority: 2,
+       );
+
+  static Future<List<Sprite>> _loadSprites() => Future.wait([
+    Sprite.load('items/gold_1.png'),
+    Sprite.load('items/gold_2.png'),
+    Sprite.load('items/gold_3.png'),
+    Sprite.load('items/gold_4.png'),
+  ]);
 
   @override
   Future<void> onLoad() async {
-    _frames = await Future.wait([
-      Sprite.load('items/gold_1.png'),
-      Sprite.load('items/gold_2.png'),
-      Sprite.load('items/gold_3.png'),
-      Sprite.load('items/gold_4.png'),
-    ]);
-    add(RectangleHitbox(position: Vector2(4, 2), size: Vector2(24, 28)));
+    try {
+      _frames = await _spriteLoader();
+      add(RectangleHitbox(position: Vector2(4, 2), size: Vector2(24, 28)));
+    } catch (_) {
+      // Never leave an invisible collectible or fail the game load because an
+      // optional animation is unavailable.
+      _frames = const [];
+      spec.available = false;
+      removeFromParent();
+    }
   }
 
   void collect() {
@@ -65,6 +82,18 @@ class Coin extends PositionComponent
   void render(Canvas canvas) {
     super.render(canvas);
     if (_frames.isEmpty) return;
-    _frames[_frameIndex].render(canvas, position: Vector2.zero(), size: size);
+    final frame = _frames[_frameIndex];
+    frame.renderRect(
+      canvas,
+      containedSpriteRect(sourceSize: frame.srcSize, boundsSize: size),
+    );
+  }
+
+  @override
+  void onRemove() {
+    if (identical(spec.live, this)) {
+      spec.live = null;
+    }
+    super.onRemove();
   }
 }

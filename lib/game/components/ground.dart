@@ -25,7 +25,7 @@ class _GroundTerrainLoader extends Component {
   _GroundTerrainLoader(this.ground);
 
   @override
-  Future<void> onLoad() => ground._loadTerrainSprites();
+  Future<void> onLoad() => ground._loadTerrainSpritesSafely();
 }
 
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
@@ -38,6 +38,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
 
   List<Sprite> _nightTerrainSprites = const [];
   List<Sprite> _dayTerrainSprites = const [];
+  final Future<List<Sprite>> Function() _terrainLoader;
 
   late Paint _horizonPaint;
   late Paint _horizonGlowPaint;
@@ -50,7 +51,9 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   final List<GroundRock> _rocks = [];
   final Random _random = Random();
 
-  Ground() : super(priority: 1);
+  Ground({@visibleForTesting Future<List<Sprite>> Function()? terrainLoader})
+    : _terrainLoader = terrainLoader ?? _loadTerrainSprites,
+      super(priority: 1);
 
   static List<String> terrainAssetNames({required bool isDay}) => isDay
       ? const [
@@ -95,15 +98,24 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     add(Foliage());
   }
 
-  Future<void> _loadTerrainSprites() async {
-    final terrainSprites = await Future.wait(
-      [
-        ...terrainAssetNames(isDay: false),
-        ...terrainAssetNames(isDay: true),
-      ].map(Sprite.load),
-    );
-    _nightTerrainSprites = terrainSprites.sublist(0, 2);
-    _dayTerrainSprites = terrainSprites.sublist(2, 4);
+  static Future<List<Sprite>> _loadTerrainSprites() => Future.wait(
+    [
+      ...terrainAssetNames(isDay: false),
+      ...terrainAssetNames(isDay: true),
+    ].map(Sprite.load),
+  );
+
+  Future<void> _loadTerrainSpritesSafely() async {
+    try {
+      final terrainSprites = await _terrainLoader();
+      _nightTerrainSprites = terrainSprites.sublist(0, 2);
+      _dayTerrainSprites = terrainSprites.sublist(2, 4);
+    } catch (_) {
+      // The procedural ground plane remains playable if optional terrain art
+      // is missing; leave both sprite lists empty so rendering skips the strip.
+      _nightTerrainSprites = const [];
+      _dayTerrainSprites = const [];
+    }
   }
 
   @override

@@ -13,6 +13,7 @@ class WorldEntitySpec {
   final CactusVariant cactusVariant;
   final double elevation;
   bool collected;
+  bool available;
   PositionComponent? live;
 
   WorldEntitySpec({
@@ -22,6 +23,7 @@ class WorldEntitySpec {
     this.cactusVariant = CactusVariant.smallSingle,
     this.elevation = 36,
     this.collected = false,
+    this.available = true,
   });
 }
 
@@ -29,12 +31,14 @@ class ElevatedPlatformSpec {
   final double worldX;
   final double width;
   final double elevation;
+  bool available;
   PositionComponent? live;
 
   ElevatedPlatformSpec({
     required this.worldX,
     this.width = 260,
     this.elevation = 90,
+    this.available = true,
   });
 
   bool containsWorldX(double left, double right) =>

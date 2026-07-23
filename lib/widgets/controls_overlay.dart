@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../constants/game_constants.dart';
+import '../constants/game_theme.dart';
 import '../game/dino_game.dart';
 
 /// Hold-to-move touch pad. Only rendered on phones and tablets — desktop and
@@ -53,51 +53,61 @@ class _ControlsOverlayState extends State<ControlsOverlay> {
 
     final padding = MediaQuery.paddingOf(context);
 
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          Positioned(
-            left: 16.0 + padding.left,
-            bottom: 16.0 + padding.bottom,
-            child: Row(
-              children: [
-                _buildButton(
-                  icon: Icons.chevron_left_rounded,
-                  color: GameConstants.neonCyan,
-                  pressed: _heldDirection == -1,
-                  onDown: () => _pressDirection(-1),
-                  onUp: () => _releaseDirection(-1),
+    // The pads sit on top of the canvas, so they follow the day/night crossfade
+    return ValueListenableBuilder<GameTheme>(
+      valueListenable: widget.game.themeNotifier,
+      builder: (context, theme, child) {
+        return Positioned.fill(
+          child: Stack(
+            children: [
+              Positioned(
+                left: 16.0 + padding.left,
+                bottom: 16.0 + padding.bottom,
+                child: Row(
+                  children: [
+                    _buildButton(
+                      theme: theme,
+                      icon: Icons.chevron_left_rounded,
+                      color: theme.accent,
+                      pressed: _heldDirection == -1,
+                      onDown: () => _pressDirection(-1),
+                      onUp: () => _releaseDirection(-1),
+                    ),
+                    const SizedBox(width: 14.0),
+                    _buildButton(
+                      theme: theme,
+                      icon: Icons.chevron_right_rounded,
+                      color: theme.accent,
+                      pressed: _heldDirection == 1,
+                      onDown: () => _pressDirection(1),
+                      onUp: () => _releaseDirection(1),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 14.0),
-                _buildButton(
-                  icon: Icons.chevron_right_rounded,
-                  color: GameConstants.neonCyan,
-                  pressed: _heldDirection == 1,
-                  onDown: () => _pressDirection(1),
-                  onUp: () => _releaseDirection(1),
+              ),
+              Positioned(
+                right: 16.0 + padding.right,
+                bottom: 16.0 + padding.bottom,
+                child: _buildButton(
+                  theme: theme,
+                  label: 'JUMP',
+                  color: theme.obstacle,
+                  pressed: _jumpHeld,
+                  onDown: _pressJump,
+                  onUp: _releaseJump,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Positioned(
-            right: 16.0 + padding.right,
-            bottom: 16.0 + padding.bottom,
-            child: _buildButton(
-              label: 'JUMP',
-              color: GameConstants.neonPink,
-              pressed: _jumpHeld,
-              onDown: _pressJump,
-              onUp: _releaseJump,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   /// A single translucent neon pad. [Listener] rather than a tap callback, so a
   /// held finger keeps the dino walking until it lifts.
   Widget _buildButton({
+    required GameTheme theme,
     IconData? icon,
     String? label,
     required Color color,
@@ -122,8 +132,8 @@ class _ControlsOverlayState extends State<ControlsOverlay> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  GameConstants.bgDark.withAlpha(pressed ? 170 : 120),
-                  GameConstants.bgDark.withAlpha(pressed ? 130 : 80),
+                  theme.panel.withAlpha(pressed ? 190 : 130),
+                  theme.panel.withAlpha(pressed ? 150 : 90),
                 ],
               ),
               borderRadius: BorderRadius.circular(20.0),

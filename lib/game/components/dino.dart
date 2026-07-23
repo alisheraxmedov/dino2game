@@ -47,6 +47,10 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   late final Paint _particlePaint;
   late final Paint _shadowPaint;
 
+  /// Last accent the glow filter was built for, so it is only rebuilt when the
+  /// day/night crossfade actually moves the colour.
+  Color? _glowColor;
+
   Dino() : super(
     size: Vector2(GameConstants.dinoWidth, GameConstants.dinoHeight),
     priority: 2,
@@ -69,18 +73,24 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     _fallSprite = await Sprite.load('$path/player_fall.png');
     _hurtSprite = await Sprite.load('$path/player_hurt.png');
 
-    // Recolours the sprite's silhouette to neon cyan and blurs it, so the
+    // Recolours the sprite's silhouette to the theme accent and blurs it, so the
     // character reads as part of the same world as the glowing cacti.
-    _glowPaint = Paint()
-      ..colorFilter = ColorFilter.mode(
-        GameConstants.neonCyan.withAlpha(190),
-        BlendMode.srcATop,
-      )
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0);
+    _glowPaint = Paint();
+    _syncGlowColor();
 
     _particlePaint = Paint()..style = PaintingStyle.fill;
 
     _shadowPaint = Paint()..style = PaintingStyle.fill;
+  }
+
+  /// Rebuilds the glow filter when the day/night crossfade shifts the accent.
+  void _syncGlowColor() {
+    final Color accent = game.theme.accent;
+    if (_glowColor == accent) return;
+    _glowColor = accent;
+    _glowPaint
+      ..colorFilter = ColorFilter.mode(accent.withAlpha(190), BlendMode.srcATop)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0);
   }
 
   void _spawnParticle(Offset position, Offset velocity) {
@@ -218,10 +228,12 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
 
     super.render(canvas);
 
+    _syncGlowColor();
+
     // Particles sit behind the character so the dust trails out from the heels
     for (int i = 0; i < _particles.length; i++) {
       final p = _particles[i];
-      _particlePaint.color = GameConstants.neonCyan
+      _particlePaint.color = game.theme.accent
           .withAlpha((p.alpha.clamp(0.0, 1.0) * 180).toInt());
       canvas.drawCircle(p.position, 2.0 * p.alpha, _particlePaint);
     }

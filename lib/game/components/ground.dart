@@ -139,15 +139,22 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   void render(Canvas canvas) {
     super.render(canvas);
 
+    // Colours are pulled per frame rather than baked in onLoad: the day/night
+    // crossfade moves them continuously while the player runs
+    final theme = game.theme;
+    _horizonPaint.color = theme.accent;
+    _horizonGlowPaint.color = theme.accent.withAlpha(30);
+    _rockPaint.color = theme.rock;
+
     // 1. Ground terrain gradient fill
     final terrainPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          GameConstants.groundColor,
-          const Color(0xFF0A0A1E),
-          const Color(0xFF050510),
+          theme.groundTop,
+          theme.groundMid,
+          theme.groundBottom,
         ],
         stops: const [0.0, 0.4, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
@@ -165,7 +172,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       final double ratio = i / verticalLines;
       final double endX = ratio * size.x;
       final alpha = (50 * (1.0 - (ratio - 0.5).abs() * 1.8)).clamp(10, 50).toInt();
-      _gridPaint.color = GameConstants.neonCyan.withAlpha(alpha);
+      _gridPaint.color = theme.accent.withAlpha(alpha);
       canvas.drawLine(Offset(centerX, 0), Offset(endX, gridHeight), _gridPaint);
     }
 
@@ -176,7 +183,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       final double y = gridHeight * ratio * ratio;
       final double halfWidth = centerX * ratio;
       final alpha = (60 * ratio).clamp(8, 60).toInt();
-      _gridPaint.color = GameConstants.neonCyan.withAlpha(alpha);
+      _gridPaint.color = theme.accent.withAlpha(alpha);
       canvas.drawLine(
         Offset(centerX - halfWidth, y),
         Offset(centerX + halfWidth, y),
@@ -200,7 +207,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     for (int i = 0; i < _grassBlades.length; i++) {
       final blade = _grassBlades[i];
       final swayOffset = sin(_grassTime * blade.sway + blade.x * 0.1) * 3.0;
-      _grassPaint.color = GameConstants.neonGreen.withAlpha(
+      _grassPaint.color = theme.grass.withAlpha(
         (80 + 40 * sin(_grassTime * blade.sway)).toInt().clamp(40, 120),
       );
       canvas.drawLine(
@@ -215,7 +222,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        GameConstants.neonPurple.withAlpha(20),
+        theme.fog.withAlpha(20),
         Colors.transparent,
       ],
     ).createShader(Rect.fromLTWH(0, 0, size.x, 20));

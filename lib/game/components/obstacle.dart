@@ -111,13 +111,19 @@ class Cactus extends Obstacle {
     );
     super.render(canvas);
 
+    // Repainted every frame so the cacti follow the day/night crossfade
+    final theme = game.theme;
+    _trunkStrokePaint.color = theme.obstacle;
+    _trunkGlowPaint.color = theme.obstacle.withAlpha(40);
+    _thornPaint.color = theme.thorn;
+
     _trunkFillPaint.shader = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        GameConstants.neonPink.withAlpha(130),
-        const Color(0xFF400020).withAlpha(110),
-        const Color(0xFF200010).withAlpha(70),
+        theme.obstacle.withAlpha(130),
+        theme.obstacleShade.withAlpha(110),
+        theme.obstacleShade.withAlpha(70),
       ],
       stops: const [0.0, 0.5, 1.0],
     ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
@@ -164,7 +170,7 @@ class Cactus extends Obstacle {
 
     // Vertical rib lines on trunk
     final ribPaint = Paint()
-      ..color = GameConstants.neonPink.withAlpha(40)
+      ..color = game.theme.obstacle.withAlpha(40)
       ..strokeWidth = 0.8;
     canvas.drawLine(Offset(x + 12, 12), Offset(x + 12, h - 4), ribPaint);
 
@@ -253,12 +259,17 @@ class Bird extends Obstacle {
 
     super.render(canvas);
 
+    final theme = game.theme;
+    _bodyStrokePaint.color = theme.obstacle;
+    _bodyGlowPaint.color = theme.obstacle.withAlpha(40);
+    _eyePaint.color = theme.highlight;
+
     _bodyFillPaint.shader = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        GameConstants.neonPink.withAlpha(130),
-        const Color(0xFF3D0020).withAlpha(100),
+        theme.obstacle.withAlpha(130),
+        theme.obstacleShade.withAlpha(100),
       ],
     ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
 
@@ -303,8 +314,8 @@ class Bird extends Obstacle {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          GameConstants.neonPink.withAlpha(100),
-          GameConstants.neonPink.withAlpha(30),
+          theme.obstacle.withAlpha(100),
+          theme.obstacle.withAlpha(30),
         ],
       ).createShader(const Rect.fromLTWH(-10, -16, 20, 30));
     canvas.drawPath(wingPath, wingFill);

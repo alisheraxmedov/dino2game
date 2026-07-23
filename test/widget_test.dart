@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:dino2game/constants/game_constants.dart';
+import 'package:dino2game/constants/game_theme.dart';
 import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
 import 'package:dino2game/widgets/controls_overlay.dart';
@@ -152,6 +153,46 @@ void main() {
     expect(game.worldSpeed, 0.0);
     expect(game.inputDirection, 0);
     expect(game.overlays.isActive('Controls'), isFalse);
+  });
+
+  test('the sky holds through the night, then crossfades into day', () async {
+    final game = await _bootGame();
+    game.startGame();
+    expect(game.theme.isDay, isFalse);
+
+    _tick(game, GameConstants.themeCycleSeconds - 1.0);
+    expect(game.theme.isDay, isFalse,
+        reason: 'the night has to hold for a full cycle before it turns');
+
+    _tick(game, GameConstants.themeTransitionSeconds + 1.5);
+    expect(game.theme.isDay, isTrue);
+    // ...and the crossfade lands fully on the day palette, not halfway
+    expect(game.theme.sky0, GameTheme.day.sky0);
+    expect(game.theme.starOpacity, GameTheme.day.starOpacity);
+  });
+
+  test('the cycle turns back around, and a new run reopens at night', () async {
+    final game = await _bootGame();
+    game.startGame();
+
+    // Night hold + crossfade + day hold + crossfade back
+    _tick(game, (GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds) * 2 + 1.0);
+    expect(game.theme.isDay, isFalse, reason: 'day has to give way to night again');
+
+    _tick(game, GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds + 1.0);
+    expect(game.theme.isDay, isTrue);
+
+    game.startGame();
+    expect(game.theme.isDay, isFalse, reason: 'every run opens at night');
+  });
+
+  test('the sky stands still on the menu', () async {
+    final game = await _bootGame();
+
+    _tick(game, GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds + 1.0);
+
+    expect(game.isIntro, isTrue);
+    expect(game.theme.isDay, isFalse);
   });
 
   testWidgets('arrow keys reach the game even when the canvas has lost focus',

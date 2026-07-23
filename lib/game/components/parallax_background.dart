@@ -174,17 +174,21 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
   void render(Canvas canvas) {
     super.render(canvas);
 
+    // The whole sky is theme driven, so the day/night crossfade repaints it
+    final theme = game.theme;
+    final double starFade = theme.starOpacity;
+
     // 1. Gradient sky
     final skyGradient = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFF020810),
-          const Color(0xFF0A0E2A),
-          const Color(0xFF15083A),
-          const Color(0xFF200840),
-          GameConstants.horizonGlow,
+          theme.sky0,
+          theme.sky1,
+          theme.sky2,
+          theme.sky3,
+          theme.sky4,
         ],
         stops: const [0.0, 0.3, 0.55, 0.75, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
@@ -205,10 +209,10 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
       path.close();
 
       final auroraColor = i == 0
-          ? GameConstants.neonGreen
+          ? theme.auroraA
           : i == 1
-              ? GameConstants.neonCyan
-              : GameConstants.neonPurple;
+              ? theme.auroraB
+              : theme.auroraC;
       auroraPaint.shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -220,15 +224,15 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
       canvas.drawPath(path, auroraPaint);
     }
 
-    // 3. Stars
-    for (int i = 0; i < _stars.length; i++) {
+    // 3. Stars — faded out entirely once the sky turns to daylight
+    for (int i = 0; i < _stars.length && starFade > 0.01; i++) {
       final star = _stars[i];
-      _starPaint.color = star.color.withAlpha((star.alpha * 255).toInt());
+      _starPaint.color = star.color.withAlpha((star.alpha * starFade * 255).toInt());
       canvas.drawCircle(Offset(star.x, star.y), star.radius, _starPaint);
       // Cross glow for bright stars
       if (star.radius > 1.2) {
         final crossPaint = Paint()
-          ..color = star.color.withAlpha((star.alpha * 60).toInt())
+          ..color = star.color.withAlpha((star.alpha * starFade * 60).toInt())
           ..strokeWidth = 0.8;
         canvas.drawLine(
           Offset(star.x - 4, star.y),
@@ -244,12 +248,13 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
     }
 
     // 4. Shooting stars
-    for (int i = 0; i < _shootingStars.length; i++) {
+    for (int i = 0; i < _shootingStars.length && starFade > 0.01; i++) {
       final ss = _shootingStars[i];
+      final int tailAlpha = (ss.alpha * starFade * 255).toInt();
       final tailPaint = Paint()
         ..shader = LinearGradient(
           colors: [
-            Colors.white.withAlpha((ss.alpha * 255).toInt()),
+            Colors.white.withAlpha(tailAlpha),
             Colors.white.withAlpha(0),
           ],
         ).createShader(Rect.fromLTWH(ss.x - 40, ss.y - 20, 50, 25));
@@ -259,19 +264,22 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
         Offset(ss.x - 35, ss.y - 15),
         tailPaint,
       );
-      _starPaint.color = Colors.white.withAlpha((ss.alpha * 255).toInt());
+      _starPaint.color = Colors.white.withAlpha(tailAlpha);
       canvas.drawCircle(Offset(ss.x, ss.y), 2.0, _starPaint);
     }
 
-    // 5. Detailed moon with craters
+    // 5. Moon by night, sun by day — the same disc, recoloured
     final double moonX = size.x - 130;
     const double moonY = 65.0;
     const double moonR = 30.0;
 
+    _moonPaint.color = theme.celestialBody;
+    _moonCraterPaint.color = theme.celestialDetail;
+
     // Ambient glow layers
     for (int r = 5; r >= 1; r--) {
       final glowPaint = Paint()
-        ..color = const Color(0xFFE8E0D0).withAlpha(8 * r)
+        ..color = theme.celestialBody.withAlpha(8 * r)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(moonX, moonY), moonR + r * 10, glowPaint);
     }
@@ -285,11 +293,11 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
 
     // 6. Far mountain layer with gradient
     _renderMountainLayer(canvas, _farMountainPath, _farMountainScroll,
-        const Color(0xFF0D0D28), const Color(0xFF141438), GameConstants.neonPurple.withAlpha(20));
+        theme.farMountainTop, theme.farMountainBottom, theme.farMountainEdge.withAlpha(20));
 
     // 7. Near mountain layer
     _renderMountainLayer(canvas, _nearMountainPath, _nearMountainScroll,
-        const Color(0xFF0A0A20), const Color(0xFF101030), GameConstants.neonPink.withAlpha(30));
+        theme.nearMountainTop, theme.nearMountainBottom, theme.nearMountainEdge.withAlpha(30));
   }
 
   void _renderMountainLayer(

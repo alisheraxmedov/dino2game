@@ -22,6 +22,14 @@ class GameConstants {
   static const String runnerSpritePath = 'characters/player';
   static const double runnerWalkFrameTime = 0.13;
 
+  // Day/night cycle: each sky holds for this long while the player is running,
+  // then crossfades into the other one.
+  static const double themeCycleSeconds = 30.0;
+  static const double themeTransitionSeconds = 2.5;
+
+  // shared_preferences keys
+  static const String highScoreKey = 'high_score';
+
   // Spawning (measured in pixels of world laid out, not seconds elapsed)
   static const double initialSpawnDistance = 560.0;
   static const double minSpawnDistance = 300.0;

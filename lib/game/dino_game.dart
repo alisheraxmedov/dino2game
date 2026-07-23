@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/game_constants.dart';
+import '../constants/game_theme.dart';
 import 'components/dino.dart';
 import 'components/ground.dart';
 import 'components/obstacle.dart';
@@ -69,6 +70,20 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   /// Derived movement state for the HUD: -1 reverse, 0 idle, +1 forward.
   final ValueNotifier<int> directionNotifier = ValueNotifier<int>(0);
 
+  /// The palette every component draws with. Swapped as the day/night cycle
+  /// advances, and published so the HUD and the touch pads follow along.
+  final ValueNotifier<GameTheme> themeNotifier =
+      ValueNotifier<GameTheme>(GameTheme.night);
+  GameTheme get theme => themeNotifier.value;
+
+  /// 0 = night, 1 = day. Held at either end for [GameConstants.themeCycleSeconds]
+  /// and then walked across over [GameConstants.themeTransitionSeconds].
+  double _themeBlend = 0.0;
+  double _themeHold = 0.0;
+  int _themeDirection = 1;
+  bool _themeSwitching = false;
+  double _lastAppliedBlend = -1.0;
+
   final Random _random = Random();
   SharedPreferences? _prefs;
 
@@ -96,7 +111,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     // Load high score from local persistence
     try {
       _prefs = await SharedPreferences.getInstance();
-      highScore = _prefs?.getInt('high_score') ?? 0;
+      highScore = _prefs?.getInt(GameConstants.highScoreKey) ?? 0;
     } catch (_) {
       // SharedPreferences might fail on unsupported web/desktop platforms, fallback to 0
       highScore = 0;
@@ -126,6 +141,9 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     scoreNotifier.value = 0;
     directionNotifier.value = 0;
 
+    // Every run opens at night and cycles from there
+    _resetTheme();
+
     dino.reset();
 
     // Hide UI overlays, show the touch control pad
@@ -149,7 +167,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
     if (currentScore > highScore) {
       highScore = currentScore;
-      _prefs?.setInt('high_score', highScore);
+      _prefs?.setInt(GameConstants.highScoreKey, highScore);
     }
 
     overlays.remove('Controls');
@@ -167,6 +185,10 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     }
 
     if (isPlaying) {
+      // The sky turns on its own clock, so it keeps cycling even if the player
+      // stops to stand still for a while
+      _advanceTheme(dt);
+
       // Ease the world speed toward whatever the held control asks for
       final double target = inputDirection > 0
           ? GameConstants.maxRunSpeed
@@ -220,6 +242,45 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     if (movementState != directionNotifier.value) {
       directionNotifier.value = movementState;
     }
+  }
+
+  /// Walks the day/night cycle forward: hold at one end, cross to the other,
+  /// then turn around and do it again.
+  void _advanceTheme(double dt) {
+    if (_themeSwitching) {
+      _themeBlend = (_themeBlend +
+              _themeDirection * dt / GameConstants.themeTransitionSeconds)
+          .clamp(0.0, 1.0);
+      if (_themeBlend <= 0.0 || _themeBlend >= 1.0) {
+        _themeSwitching = false;
+        _themeHold = 0.0;
+        _themeDirection = -_themeDirection;
+      }
+    } else {
+      _themeHold += dt;
+      if (_themeHold >= GameConstants.themeCycleSeconds) _themeSwitching = true;
+    }
+    _applyThemeBlend();
+  }
+
+  /// Rebuilds the palette only when the blend actually moved, so the HUD is not
+  /// told to repaint on every frame of a 30 second hold.
+  void _applyThemeBlend() {
+    if ((_themeBlend - _lastAppliedBlend).abs() < 0.0001) return;
+    _lastAppliedBlend = _themeBlend;
+    // Smoothstep: the sky eases out of one palette and into the other instead
+    // of sliding across at a constant rate
+    final double t = _themeBlend * _themeBlend * (3.0 - 2.0 * _themeBlend);
+    themeNotifier.value = GameTheme.lerp(GameTheme.night, GameTheme.day, t);
+  }
+
+  void _resetTheme() {
+    _themeBlend = 0.0;
+    _themeHold = 0.0;
+    _themeDirection = 1;
+    _themeSwitching = false;
+    _lastAppliedBlend = -1.0;
+    _applyThemeBlend();
   }
 
   /// Called by the on-screen touch pad. -1 backward, 0 idle, +1 forward.

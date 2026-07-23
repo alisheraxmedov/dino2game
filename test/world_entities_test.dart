@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dino2game/game/components/coin.dart';
+import 'package:dino2game/game/components/elevated_platform.dart';
 import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
 import 'package:dino2game/game/world_layout.dart';
@@ -325,25 +326,37 @@ void main() {
     expect(game.coinNotifier.value, 0);
   });
 
-  test('streaming renders hazards and coins but not platforms', () async {
-    final game = await _bootGame(random: Random(7));
-    game.startGame();
-    game.setInputDirection(1);
-    _tick(game, 35);
+  test(
+    'streaming renders hazards, coins, and non-overlapping platforms',
+    () async {
+      final game = await _bootGame(random: Random(7));
+      game.startGame();
+      game.setInputDirection(1);
+      _tick(game, 35);
 
-    final liveHazards = game.worldLayout.where(
-      (slot) => slot.kind != WorldEntityKind.coin && slot.live != null,
-    );
-    expect(liveHazards, isNotEmpty);
-    final liveCoins = game.worldLayout.where(
-      (slot) => slot.kind == WorldEntityKind.coin && slot.live is Coin,
-    );
-    expect(liveCoins, isNotEmpty);
-    expect(
-      game.platformLayout.every((platform) => platform.live == null),
-      isTrue,
-    );
-  });
+      final liveHazards = game.worldLayout.where(
+        (slot) => slot.kind != WorldEntityKind.coin && slot.live != null,
+      );
+      expect(liveHazards, isNotEmpty);
+      final liveCoins = game.worldLayout.where(
+        (slot) => slot.kind == WorldEntityKind.coin && slot.live is Coin,
+      );
+      expect(liveCoins, isNotEmpty);
+      final livePlatforms = game.platformLayout.where(
+        (platform) => platform.live is ElevatedPlatform,
+      );
+      expect(livePlatforms, isNotEmpty);
+
+      for (final platform in game.platformLayout) {
+        final overlapping = game.platformLayout.where(
+          (other) =>
+              !identical(other, platform) &&
+              platform.containsWorldX(other.worldX, other.worldX + other.width),
+        );
+        expect(overlapping, isEmpty);
+      }
+    },
+  );
 
   test('every hazard loads its Kenney sprite set', () async {
     final game = await _bootGame();

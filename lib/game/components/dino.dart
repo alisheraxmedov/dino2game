@@ -25,9 +25,11 @@ class DinoParticle {
 /// The player character. Drawn from the Kenney "Platformer Characters 1" sprite
 /// set (CC0), wrapped in the game's neon treatment: a blurred cyan silhouette
 /// behind the sprite plus the dust and shadow the hand-drawn dino used to have.
-class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<DinoGame> {
+class Dino extends PositionComponent
+    with CollisionCallbacks, HasGameReference<DinoGame> {
   double _yVelocity = 0.0;
   bool _isOnGround = false;
+  bool _isOnElevatedPlatform = false;
   bool _isRunning = false;
   bool _facingLeft = false;
   double _animationTime = 0.0;
@@ -55,19 +57,25 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   /// day/night crossfade actually moves the colour.
   Color? _glowColor;
 
-  Dino() : super(
-    size: Vector2(GameConstants.dinoWidth, GameConstants.dinoHeight),
-    priority: 2,
-  );
+  Dino()
+    : super(
+        size: Vector2(GameConstants.dinoWidth, GameConstants.dinoHeight),
+        priority: 2,
+      );
+
+  bool get isOnElevatedPlatform => _isOnElevatedPlatform;
+  double get verticalVelocity => _yVelocity;
 
   @override
   Future<void> onLoad() async {
     // Tall and narrow: the sprite's wide frame is mostly swinging arms, so the
     // hitbox tracks the torso and legs instead of the full 80px width.
-    add(RectangleHitbox(
-      position: Vector2(12, 10),
-      size: Vector2(size.x - 24, size.y - 12),
-    ));
+    add(
+      RectangleHitbox(
+        position: Vector2(12, 10),
+        size: Vector2(size.x - 24, size.y - 12),
+      ),
+    );
 
     // Recolours the sprite's silhouette to the theme accent and blurs it, so the
     // character reads as part of the same world as the glowing cacti.
@@ -136,13 +144,11 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     if (_isOnGround) {
       _yVelocity = -GameConstants.jumpForce;
       _isOnGround = false;
+      _isOnElevatedPlatform = false;
       for (int i = 0; i < 15; i++) {
         _spawnParticle(
           Offset(size.x * 0.4, size.y - 2),
-          Offset(
-            (i - 7) * 20.0 - 50.0,
-            -40.0 - Random().nextDouble() * 60,
-          ),
+          Offset((i - 7) * 20.0 - 50.0, -40.0 - Random().nextDouble() * 60),
         );
       }
     }
@@ -151,6 +157,7 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   void reset() {
     _yVelocity = 0.0;
     _isOnGround = true;
+    _isOnElevatedPlatform = false;
     _isRunning = false;
     _facingLeft = false;
     _animationTime = 0.0;
@@ -158,11 +165,17 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     _particlePool.addAll(_particles);
     _particles.clear();
     final gameHeight = game.size.y;
-    position = Vector2(60.0, gameHeight - GameConstants.dinoGroundYOffset - size.y);
+    position = Vector2(
+      60.0,
+      gameHeight - GameConstants.dinoGroundYOffset - size.y,
+    );
   }
 
   @override
-  void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
+  void onCollisionStart(
+    Set<Vector2> intersectionPoints,
+    PositionComponent other,
+  ) {
     super.onCollisionStart(intersectionPoints, other);
     if (other is Coin) {
       other.collect();
@@ -176,14 +189,45 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     super.update(dt);
     if (game.isIntro) return;
 
+    final worldLeft = game.worldOffset + position.x;
+    final worldRight = worldLeft + size.x;
+    final feetY = position.y + size.y;
+
+    if (_isOnElevatedPlatform &&
+        !game.hasPlatformSupport(
+          worldLeft: worldLeft,
+          worldRight: worldRight,
+          feetY: feetY,
+        )) {
+      _isOnGround = false;
+      _isOnElevatedPlatform = false;
+    }
+
     if (!_isOnGround) {
+      final previousFeetY = position.y + size.y;
       _yVelocity += GameConstants.gravity * dt;
       position.y += _yVelocity * dt;
+      final currentFeetY = position.y + size.y;
       final groundY = game.size.y - GameConstants.dinoGroundYOffset - size.y;
-      if (position.y >= groundY) {
+
+      final landingSurface = _yVelocity >= 0
+          ? game.landingSurfaceY(
+              worldLeft: worldLeft,
+              worldRight: worldRight,
+              previousFeetY: previousFeetY,
+              currentFeetY: currentFeetY,
+            )
+          : null;
+      if (landingSurface != null) {
+        position.y = landingSurface - size.y;
+        _yVelocity = 0.0;
+        _isOnGround = true;
+        _isOnElevatedPlatform = true;
+      } else if (position.y >= groundY) {
         position.y = groundY;
         _yVelocity = 0.0;
         _isOnGround = true;
+        _isOnElevatedPlatform = false;
       }
     }
 
@@ -200,8 +244,10 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
 
     if (_isOnGround && _isRunning) {
       // Step cadence follows the actual pace, so backing up looks slower
-      final double pace =
-          (game.currentSpeed / GameConstants.maxRunSpeed).clamp(0.35, 1.0);
+      final double pace = (game.currentSpeed / GameConstants.maxRunSpeed).clamp(
+        0.35,
+        1.0,
+      );
       _animationTime += dt * pace;
       if (_animationTime >= GameConstants.runnerWalkFrameTime) {
         _runStep = (_runStep + 1) % 2;
@@ -244,7 +290,8 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   @override
   void render(Canvas canvas) {
     // Dynamic ground shadow
-    final double groundY = game.size.y - GameConstants.dinoGroundYOffset - size.y;
+    final double groundY =
+        game.size.y - GameConstants.dinoGroundYOffset - size.y;
     final double distToGround = groundY - position.y;
     final double shadowScale = (1.0 - (distToGround / 350.0)).clamp(0.15, 1.0);
     _shadowPaint.color = Colors.black.withAlpha((100 * shadowScale).toInt());
@@ -264,8 +311,9 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     // Particles sit behind the character so the dust trails out from the heels
     for (int i = 0; i < _particles.length; i++) {
       final p = _particles[i];
-      _particlePaint.color = game.theme.accent
-          .withAlpha((p.alpha.clamp(0.0, 1.0) * 180).toInt());
+      _particlePaint.color = game.theme.accent.withAlpha(
+        (p.alpha.clamp(0.0, 1.0) * 180).toInt(),
+      );
       canvas.drawCircle(p.position, 2.0 * p.alpha, _particlePaint);
     }
 

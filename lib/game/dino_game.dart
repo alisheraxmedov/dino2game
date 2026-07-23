@@ -9,6 +9,7 @@ import '../constants/game_constants.dart';
 import '../constants/game_theme.dart';
 import 'components/coin.dart';
 import 'components/dino.dart';
+import 'components/elevated_platform.dart';
 import 'components/ground.dart';
 import 'components/obstacle.dart';
 import 'components/parallax_background.dart';
@@ -238,6 +239,7 @@ class DinoGame extends FlameGame
       // build and tear down components as their world slot enters and leaves view
       _ensureLayout();
       _streamWorld();
+      _streamPlatforms();
     } else {
       // Menus and game over freeze the world outright
       worldSpeed = 0.0;
@@ -375,7 +377,48 @@ class DinoGame extends FlameGame
   void addWorldSpecForTest(WorldEntitySpec spec) => _layout.add(spec);
 
   @visibleForTesting
-  void streamWorldForTest() => _streamWorld();
+  void addPlatformSpecForTest(ElevatedPlatformSpec spec) =>
+      _platformLayout.add(spec);
+
+  @visibleForTesting
+  void streamWorldForTest() {
+    _streamWorld();
+    _streamPlatforms();
+  }
+
+  double? landingSurfaceY({
+    required double worldLeft,
+    required double worldRight,
+    required double previousFeetY,
+    required double currentFeetY,
+  }) {
+    double? highestSurface;
+    for (final platform in _platformLayout) {
+      final surfaceY =
+          size.y - GameConstants.dinoGroundYOffset - platform.elevation;
+      if (platform.containsWorldX(worldLeft, worldRight) &&
+          previousFeetY <= surfaceY &&
+          currentFeetY >= surfaceY &&
+          (highestSurface == null || surfaceY < highestSurface)) {
+        highestSurface = surfaceY;
+      }
+    }
+    return highestSurface;
+  }
+
+  bool hasPlatformSupport({
+    required double worldLeft,
+    required double worldRight,
+    required double feetY,
+  }) {
+    const supportTolerance = 0.01;
+    return _platformLayout.any((platform) {
+      final surfaceY =
+          size.y - GameConstants.dinoGroundYOffset - platform.elevation;
+      return platform.containsWorldX(worldLeft, worldRight) &&
+          (feetY - surfaceY).abs() <= supportTolerance;
+    });
+  }
 
   /// Called by the on-screen touch pad. -1 backward, 0 idle, +1 forward.
   void setInputDirection(int dir) {
@@ -431,6 +474,23 @@ class DinoGame extends FlameGame
           spec.live = component;
           add(component);
         }
+      } else if (!inWindow && spec.live != null) {
+        spec.live!.removeFromParent();
+        spec.live = null;
+      }
+    }
+  }
+
+  void _streamPlatforms() {
+    final double from = worldOffset - GameConstants.worldStreamMargin;
+    final double to = worldOffset + size.x + GameConstants.worldStreamMargin;
+
+    for (final spec in _platformLayout) {
+      final inWindow = spec.worldX + spec.width >= from && spec.worldX <= to;
+      if (inWindow && spec.live == null) {
+        final component = ElevatedPlatform(spec: spec);
+        spec.live = component;
+        add(component);
       } else if (!inWindow && spec.live != null) {
         spec.live!.removeFromParent();
         spec.live = null;

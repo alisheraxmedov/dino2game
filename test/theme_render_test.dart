@@ -11,15 +11,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:dino2game/constants/game_constants.dart';
+import 'package:dino2game/game/components/elevated_platform.dart';
+import 'package:dino2game/game/components/ground.dart';
 import 'package:dino2game/game/dino_game.dart';
 
 const int _width = 800;
 const int _height = 400;
 
 Map<String, OverlayWidgetBuilder<DinoGame>> _stubOverlays() => {
-      for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
-        name: (context, game) => const SizedBox.shrink(),
-    };
+  for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
+    name: (context, game) => const SizedBox.shrink(),
+};
 
 void _tick(DinoGame game, double seconds) {
   const step = 1 / 60;
@@ -30,7 +32,8 @@ void _tick(DinoGame game, double seconds) {
 
 /// Rasterises the painted canvas and reads one pixel back as RGBA.
 Future<int> _pixelAt(WidgetTester tester, GlobalKey key, int x, int y) async {
-  final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final boundary =
+      key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   late int value;
   // toImage needs the real event loop, which a widget test's fake async lacks
   await tester.runAsync(() async {
@@ -42,8 +45,31 @@ Future<int> _pixelAt(WidgetTester tester, GlobalKey key, int x, int y) async {
 }
 
 void main() {
-  testWidgets('the canvas repaints when the sky turns to day',
-      (WidgetTester tester) async {
+  test('lower terrain selects the packaged sprites for each theme', () {
+    expect(Ground.terrainAssetNames(isDay: false), [
+      'environment/ground_cake_broken.png',
+      'environment/ground_cake_small_broken.png',
+    ]);
+    expect(Ground.terrainAssetNames(isDay: true), [
+      'environment/ground_grass_broken.png',
+      'environment/ground_grass_small_broken.png',
+    ]);
+  });
+
+  test('elevated platforms map night and day to distinct terrain', () {
+    expect(
+      ElevatedPlatform.assetName(isDay: false),
+      'environment/ground_stone.png',
+    );
+    expect(
+      ElevatedPlatform.assetName(isDay: true),
+      'environment/ground_wood_broken.png',
+    );
+  });
+
+  testWidgets('the canvas repaints when the sky turns to day', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = Size(_width.toDouble(), _height.toDouble());
     tester.view.devicePixelRatio = 1.0;
@@ -78,7 +104,9 @@ void main() {
 
     _tick(
       game,
-      GameConstants.themeCycleSeconds + GameConstants.themeTransitionSeconds + 1.0,
+      GameConstants.themeCycleSeconds +
+          GameConstants.themeTransitionSeconds +
+          1.0,
     );
     await tester.pump(const Duration(milliseconds: 16));
     expect(game.theme.isDay, isTrue);
@@ -86,8 +114,16 @@ void main() {
     final int daySky = await _pixelAt(tester, key, 40, 30);
     final int dayGround = await _pixelAt(tester, key, 40, _height - 20);
 
-    expect(nightSky, isNot(0), reason: 'the night frame has to have been painted');
+    expect(
+      nightSky,
+      isNot(0),
+      reason: 'the night frame has to have been painted',
+    );
     expect(daySky, isNot(nightSky), reason: 'the sky has to be repainted');
-    expect(dayGround, isNot(nightGround), reason: 'the ground has to be repainted');
+    expect(
+      dayGround,
+      isNot(nightGround),
+      reason: 'the ground has to be repainted',
+    );
   });
 }

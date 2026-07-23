@@ -11,13 +11,24 @@ class GroundRock {
   final double w;
   final double h;
 
-  GroundRock({required this.x, required this.y, required this.w, required this.h});
+  GroundRock({
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+  });
 }
 
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
   /// Height of the ground plane: local y 0 is the horizon line, y [bandHeight]
   /// is the front edge the runner stands on.
   static const double bandHeight = 100.0;
+
+  static const List<double> _terrainSourceWidths = [380, 200];
+  static const List<double> _terrainSourceHeights = [94, 100];
+
+  List<Sprite> _nightTerrainSprites = const [];
+  List<Sprite> _dayTerrainSprites = const [];
 
   late Paint _horizonPaint;
   late Paint _horizonGlowPaint;
@@ -31,6 +42,16 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   final Random _random = Random();
 
   Ground() : super(priority: 1);
+
+  static List<String> terrainAssetNames({required bool isDay}) => isDay
+      ? const [
+          'environment/ground_grass_broken.png',
+          'environment/ground_grass_small_broken.png',
+        ]
+      : const [
+          'environment/ground_cake_broken.png',
+          'environment/ground_cake_small_broken.png',
+        ];
 
   @override
   Future<void> onLoad() async {
@@ -56,6 +77,15 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
 
     _fogPaint = Paint()..style = PaintingStyle.fill;
 
+    final terrainSprites = await Future.wait(
+      [
+        ...terrainAssetNames(isDay: false),
+        ...terrainAssetNames(isDay: true),
+      ].map(Sprite.load),
+    );
+    _nightTerrainSprites = terrainSprites.sublist(0, 2);
+    _dayTerrainSprites = terrainSprites.sublist(2, 4);
+
     // A child, not a sibling: children render after their parent, so the plants
     // are guaranteed to land on top of the terrain plane drawn below.
     add(Foliage());
@@ -65,16 +95,21 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
     this.size = Vector2(size.x, bandHeight);
-    position = Vector2(0, size.y - GameConstants.dinoGroundYOffset - bandHeight);
+    position = Vector2(
+      0,
+      size.y - GameConstants.dinoGroundYOffset - bandHeight,
+    );
 
     if (_rocks.isEmpty) {
       for (int i = 0; i < 12; i++) {
-        _rocks.add(GroundRock(
-          x: _random.nextDouble() * size.x,
-          y: _random.nextDouble() * 6 + 4,
-          w: _random.nextDouble() * 6 + 3,
-          h: _random.nextDouble() * 3 + 2,
-        ));
+        _rocks.add(
+          GroundRock(
+            x: _random.nextDouble() * size.x,
+            y: _random.nextDouble() * 6 + 4,
+            w: _random.nextDouble() * 6 + 3,
+            h: _random.nextDouble() * 3 + 2,
+          ),
+        );
       }
     }
   }
@@ -110,6 +145,31 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     return result < 0 ? result + range : result;
   }
 
+  void _renderTerrainStrip(Canvas canvas) {
+    final sprites = game.theme.isDay
+        ? _dayTerrainSprites
+        : _nightTerrainSprites;
+    if (sprites.length != 2) return;
+
+    final logicalWidths = <double>[
+      _terrainSourceWidths[0] * bandHeight / _terrainSourceHeights[0],
+      _terrainSourceWidths[1] * bandHeight / _terrainSourceHeights[1],
+    ];
+    final patternWidth = logicalWidths[0] + logicalWidths[1];
+    var x = _positiveMod(-game.worldOffset, patternWidth) - patternWidth;
+
+    while (x < size.x) {
+      for (var index = 0; index < sprites.length; index++) {
+        sprites[index].render(
+          canvas,
+          position: Vector2(x, 0),
+          size: Vector2(logicalWidths[index], bandHeight),
+        );
+        x += logicalWidths[index];
+      }
+    }
+  }
+
   @override
   void render(Canvas canvas) {
     super.render(canvas);
@@ -126,11 +186,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [
-          theme.groundTop,
-          theme.groundMid,
-          theme.groundBottom,
-        ],
+        colors: [theme.groundTop, theme.groundMid, theme.groundBottom],
         stops: const [0.0, 0.4, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), terrainPaint);
@@ -146,7 +202,9 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     for (int i = 0; i <= verticalLines; i++) {
       final double ratio = i / verticalLines;
       final double endX = ratio * size.x;
-      final alpha = (50 * (1.0 - (ratio - 0.5).abs() * 1.8)).clamp(10, 50).toInt();
+      final alpha = (50 * (1.0 - (ratio - 0.5).abs() * 1.8))
+          .clamp(10, 50)
+          .toInt();
       _gridPaint.color = theme.accent.withAlpha(alpha);
       canvas.drawLine(Offset(centerX, 0), Offset(endX, gridHeight), _gridPaint);
     }
@@ -178,14 +236,15 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       );
     }
 
-    // 5. Atmospheric fog near horizon
+    // 5. Supplied lower terrain. Foliage remains a child and therefore renders
+    // above this strip.
+    _renderTerrainStrip(canvas);
+
+    // 6. Atmospheric fog near horizon
     _fogPaint.shader = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        theme.fog.withAlpha(20),
-        Colors.transparent,
-      ],
+      colors: [theme.fog.withAlpha(20), Colors.transparent],
     ).createShader(Rect.fromLTWH(0, 0, size.x, 20));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x, 20), _fogPaint);
   }

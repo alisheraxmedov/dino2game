@@ -390,7 +390,7 @@ class DinoGame extends FlameGame
       final bool inWindow = spec.worldX >= from && spec.worldX <= to;
 
       if (inWindow && spec.live == null) {
-        final obstacle = _transitionalObstacleFor(spec);
+        final obstacle = _obstacleFor(spec);
         if (obstacle != null) {
           spec.live = obstacle;
           add(obstacle);
@@ -528,29 +528,28 @@ class DinoGame extends FlameGame
         : CactusVariant.smallDouble;
   }
 
-  Obstacle? _transitionalObstacleFor(WorldEntitySpec spec) {
-    if (spec.kind == WorldEntityKind.coin) return null;
-    if (spec.kind == WorldEntityKind.wingMan) {
-      return Bird(
-        heightLevel: spec.wingHeight == WingHeight.low
-            ? BirdHeight.low
-            : BirdHeight.high,
+  Obstacle? _obstacleFor(WorldEntitySpec spec) {
+    return switch (spec.kind) {
+      WorldEntityKind.cactus => Cactus(
+        variant: spec.cactusVariant,
         screenHeight: size.y,
         worldX: spec.worldX,
-      );
-    }
-
-    final cactusType = switch (spec.kind) {
-      WorldEntityKind.spikeMan => CactusType.smallSingle,
-      WorldEntityKind.springMan => CactusType.smallDouble,
-      _ => switch (spec.cactusVariant) {
-        CactusVariant.smallSingle => CactusType.smallSingle,
-        CactusVariant.smallDouble => CactusType.smallDouble,
-        CactusVariant.largeSingle => CactusType.largeSingle,
-        CactusVariant.largeTriple => CactusType.largeTriple,
-      },
+      ),
+      WorldEntityKind.spikeMan => SpikeManEnemy(
+        screenHeight: size.y,
+        worldX: spec.worldX,
+      ),
+      WorldEntityKind.springMan => SpringManEnemy(
+        screenHeight: size.y,
+        worldX: spec.worldX,
+      ),
+      WorldEntityKind.wingMan => WingMan(
+        heightLevel: spec.wingHeight,
+        screenHeight: size.y,
+        worldX: spec.worldX,
+      ),
+      WorldEntityKind.coin => null,
     };
-    return Cactus(type: cactusType, screenHeight: size.y, worldX: spec.worldX);
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,19 @@ void _tick(DinoGame game, double seconds) {
   for (double t = 0; t < seconds; t += step) {
     game.update(step);
   }
+}
+
+class _FailingObstacle extends Obstacle {
+  _FailingObstacle({required double screenHeight, required super.worldX})
+    : super(
+        size: Vector2.all(20),
+        groundY: screenHeight - 20,
+        groundRelativeY: 0,
+      );
+
+  @override
+  Future<List<Sprite>> loadSprites() =>
+      Future.error(StateError('deliberate sprite-load failure'));
 }
 
 void main() {
@@ -256,5 +270,124 @@ void main() {
       game.platformLayout.every((platform) => platform.live == null),
       isTrue,
     );
+  });
+
+  test('every hazard loads its Kenney sprite set', () async {
+    final game = await _bootGame();
+    final hazards = <Obstacle>[
+      Cactus(
+        variant: CactusVariant.smallSingle,
+        screenHeight: game.size.y,
+        worldX: 200,
+      ),
+      SpikeManEnemy(screenHeight: game.size.y, worldX: 300),
+      SpringManEnemy(screenHeight: game.size.y, worldX: 400),
+      WingMan(
+        heightLevel: WingHeight.low,
+        screenHeight: game.size.y,
+        worldX: 500,
+      ),
+    ];
+
+    for (final hazard in hazards) {
+      game.add(hazard);
+    }
+    await game.ready();
+
+    expect(hazards.every((hazard) => hazard.spritesLoaded), isTrue);
+  });
+
+  test('WingMan advances through the five supplied frames', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final wingMan = WingMan(
+      heightLevel: WingHeight.low,
+      screenHeight: game.size.y,
+      worldX: 200,
+    );
+    game.add(wingMan);
+    await game.ready();
+
+    final start = wingMan.frameIndex;
+    _tick(game, 0.25);
+
+    expect(wingMan.frameIndex, isNot(start));
+    expect(wingMan.frameCount, 5);
+  });
+
+  test(
+    'streaming maps typed hazard specs to their sprite components',
+    () async {
+      final game = await _bootGame(random: Random(7));
+      game.startGame();
+      game.dino.position.x = -1000;
+      game.setInputDirection(1);
+      _tick(game, 35);
+
+      const expectedTypes = {
+        WorldEntityKind.cactus: Cactus,
+        WorldEntityKind.spikeMan: SpikeManEnemy,
+        WorldEntityKind.springMan: SpringManEnemy,
+        WorldEntityKind.wingMan: WingMan,
+      };
+
+      for (final entry in expectedTypes.entries) {
+        final spec = game.worldLayout.firstWhere(
+          (candidate) => candidate.kind == entry.key,
+        );
+        game.setInputDirection(0);
+        game.worldSpeed = 0;
+        game.worldOffset = spec.worldX - game.size.x / 2;
+        _tick(game, 1 / 60);
+        await game.ready();
+
+        expect(spec.live.runtimeType, entry.value, reason: entry.key.name);
+      }
+    },
+  );
+
+  test('sprite hazards retain fixed world anchors', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final hazards = <Obstacle>[
+      Cactus(
+        variant: CactusVariant.largeTriple,
+        screenHeight: game.size.y,
+        worldX: 300,
+      ),
+      SpikeManEnemy(screenHeight: game.size.y, worldX: 400),
+      SpringManEnemy(screenHeight: game.size.y, worldX: 500),
+      WingMan(
+        heightLevel: WingHeight.high,
+        screenHeight: game.size.y,
+        worldX: 600,
+      ),
+    ];
+    final originalY = {for (final hazard in hazards) hazard: hazard.position.y};
+    for (final hazard in hazards) {
+      game.add(hazard);
+    }
+    await game.ready();
+
+    game.worldOffset = 125;
+    _tick(game, 0.5);
+
+    for (final hazard in hazards) {
+      expect(hazard.position.x, hazard.worldX - game.worldOffset);
+      expect(hazard.position.y, originalY[hazard]);
+    }
+  });
+
+  test('a failed sprite set removes a harmless invisible hazard', () async {
+    final game = await _bootGame();
+    final hazard = _FailingObstacle(screenHeight: game.size.y, worldX: 200);
+
+    game.add(hazard);
+    await game.ready();
+    _tick(game, 1 / 60);
+
+    expect(hazard.spritesLoaded, isFalse);
+    expect(hazard.children, isEmpty);
+    expect(game.children.contains(hazard), isFalse);
   });
 }

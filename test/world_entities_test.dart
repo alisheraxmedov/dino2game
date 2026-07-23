@@ -310,8 +310,9 @@ void main() {
     game.streamWorldForTest();
 
     expect(game.isPlaying, isTrue);
+    expect(spec.available, isFalse);
     expect(spec.live, isNull);
-    expect(game.children.whereType<Coin>(), isEmpty);
+    expect(game.children, isNot(contains(coin)));
   });
 
   test('a collected streamed coin never respawns', () async {

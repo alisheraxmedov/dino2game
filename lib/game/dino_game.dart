@@ -158,7 +158,7 @@ class DinoGame extends FlameGame
     overlays.remove('MainMenu');
     overlays.remove('Settings');
     overlays.remove('GameOver');
-    overlays.add('Controls');
+    // overlays.add('Controls');
 
     // START/REPLAY was just clicked, so the button owns the focus — take it back
     onRequestFocus?.call();
@@ -665,18 +665,10 @@ class DinoGame extends FlameGame
     super.onTapDown(event);
     if (isPlaying) {
       dino.jump();
+      inputDirection = 1; // Start auto-running
     }
   }
 
-  // Not const: LogicalKeyboardKey overrides `==`, which const sets disallow
-  static final Set<LogicalKeyboardKey> _backKeys = {
-    LogicalKeyboardKey.arrowLeft,
-    LogicalKeyboardKey.keyA,
-  };
-  static final Set<LogicalKeyboardKey> _forwardKeys = {
-    LogicalKeyboardKey.arrowRight,
-    LogicalKeyboardKey.keyD,
-  };
   static final Set<LogicalKeyboardKey> _jumpKeys = {
     LogicalKeyboardKey.space,
     LogicalKeyboardKey.arrowUp,
@@ -690,20 +682,12 @@ class DinoGame extends FlameGame
   ) {
     if (!isPlaying) return KeyEventResult.ignored;
 
-    // Re-derive the direction from what is physically held right now, so key
-    // repeats and simultaneous presses can never desync the state
-    final bool back = keysPressed.any(_backKeys.contains);
-    final bool forward = keysPressed.any(_forwardKeys.contains);
-    inputDirection = (forward ? 1 : 0) + (back ? -1 : 0);
-
     if (_jumpKeys.contains(event.logicalKey)) {
       // Only the initial press jumps — OS auto-repeat must not machine-gun it
-      if (event is KeyDownEvent) dino.jump();
-      return KeyEventResult.handled;
-    }
-
-    if (_backKeys.contains(event.logicalKey) ||
-        _forwardKeys.contains(event.logicalKey)) {
+      if (event is KeyDownEvent) {
+        dino.jump();
+        inputDirection = 1; // Start auto-running
+      }
       return KeyEventResult.handled;
     }
 

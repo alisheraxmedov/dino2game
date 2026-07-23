@@ -19,30 +19,36 @@ class _ControlsOverlayState extends State<ControlsOverlay> {
   // Which direction pad is currently under a finger, so lifting one button
   // never cancels a hold that belongs to the other one.
   int _heldDirection = 0;
-  bool _jumpHeld = false;
+  // bool _jumpHeld = false;
 
   static const double _buttonSize = 68.0;
 
   void _pressDirection(int dir) {
+    if (!mounted) return;
     setState(() => _heldDirection = dir);
     widget.game.setInputDirection(dir);
   }
 
   void _releaseDirection(int dir) {
     if (_heldDirection != dir) return;
+    if (!mounted) return;
     setState(() => _heldDirection = 0);
     widget.game.setInputDirection(0);
   }
 
+  /*
   void _pressJump() {
+    if (!mounted) return;
     setState(() => _jumpHeld = true);
     widget.game.requestJump();
   }
 
   void _releaseJump() {
     if (!_jumpHeld) return;
+    if (!mounted) return;
     setState(() => _jumpHeld = false);
   }
+  */
 
   @override
   Widget build(BuildContext context) {
@@ -60,31 +66,35 @@ class _ControlsOverlayState extends State<ControlsOverlay> {
         return Positioned.fill(
           child: Stack(
             children: [
-              Positioned(
-                left: 16.0 + padding.left,
-                bottom: 16.0 + padding.bottom,
-                child: Row(
-                  children: [
-                    _buildButton(
-                      theme: theme,
-                      icon: Icons.chevron_left_rounded,
-                      color: theme.accent,
-                      pressed: _heldDirection == -1,
-                      onDown: () => _pressDirection(-1),
-                      onUp: () => _releaseDirection(-1),
-                    ),
-                    const SizedBox(width: 14.0),
-                    _buildButton(
-                      theme: theme,
-                      icon: Icons.chevron_right_rounded,
-                      color: theme.accent,
-                      pressed: _heldDirection == 1,
-                      onDown: () => _pressDirection(1),
-                      onUp: () => _releaseDirection(1),
-                    ),
-                  ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: EdgeInsets.only(right: 16.0 + padding.right),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildButton(
+                        theme: theme,
+                        icon: Icons.chevron_left_rounded,
+                        color: theme.accent,
+                        pressed: _heldDirection == -1,
+                        onDown: () => _pressDirection(-1),
+                        onUp: () => _releaseDirection(-1),
+                      ),
+                      const SizedBox(width: 14.0),
+                      _buildButton(
+                        theme: theme,
+                        icon: Icons.chevron_right_rounded,
+                        color: theme.accent,
+                        pressed: _heldDirection == 1,
+                        onDown: () => _pressDirection(1),
+                        onUp: () => _releaseDirection(1),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              /*
               Positioned(
                 right: 16.0 + padding.right,
                 bottom: 16.0 + padding.bottom,
@@ -97,6 +107,7 @@ class _ControlsOverlayState extends State<ControlsOverlay> {
                   onUp: _releaseJump,
                 ),
               ),
+              */
             ],
           ),
         );

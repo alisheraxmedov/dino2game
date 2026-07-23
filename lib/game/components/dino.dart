@@ -2,8 +2,10 @@ import 'dart:math';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import '../../constants/game_characters.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
+import 'coin.dart';
 import 'obstacle.dart';
 
 class DinoParticle {
@@ -20,89 +22,112 @@ class DinoParticle {
   }
 }
 
-class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<DinoGame> {
+/// The player character. Drawn from the Kenney "Platformer Characters 1" sprite
+/// set (CC0), wrapped in the game's neon treatment: a blurred cyan silhouette
+/// behind the sprite plus the dust and shadow the hand-drawn dino used to have.
+class Dino extends PositionComponent
+    with CollisionCallbacks, HasGameReference<DinoGame> {
   double _yVelocity = 0.0;
   bool _isOnGround = false;
+  bool _isOnElevatedPlatform = false;
+  bool _isRunning = false;
+  bool _facingLeft = false;
   double _animationTime = 0.0;
   int _runStep = 0;
-  double _breathPhase = 0.0;
 
   final List<DinoParticle> _particles = [];
   final List<DinoParticle> _particlePool = [];
   final double _particleSpawnInterval = 0.04;
   double _particleTimer = 0.0;
 
-  late final Paint _bodyFillPaint;
-  late final Paint _bodyStrokePaint;
-  late final Paint _bodyGlowPaint;
-  late final Paint _eyeWhitePaint;
-  late final Paint _eyePupilPaint;
-  late final Paint _teethPaint;
-  late final Paint _spinesPaint;
-  late final Paint _clawPaint;
-  late final Paint _bellyPaint;
+  // Nullable and swappable: the settings screen can change character at any
+  // point before a run, and a half-loaded set must never reach the canvas.
+  Sprite? _idleSprite;
+  Sprite? _walk1Sprite;
+  Sprite? _walk2Sprite;
+  Sprite? _jumpSprite;
+  Sprite? _fallSprite;
+  Sprite? _hurtSprite;
+
+  late final Paint _glowPaint;
   late final Paint _particlePaint;
   late final Paint _shadowPaint;
 
-  final Path _bodyPath = Path();
-  final Path _leftLegPath = Path();
-  final Path _rightLegPath = Path();
+  /// Last accent the glow filter was built for, so it is only rebuilt when the
+  /// day/night crossfade actually moves the colour.
+  Color? _glowColor;
 
-  Dino() : super(
-    size: Vector2(GameConstants.dinoWidth, GameConstants.dinoHeight),
-    priority: 2,
-  );
+  Dino()
+    : super(
+        size: Vector2(GameConstants.dinoWidth, GameConstants.dinoHeight),
+        priority: 2,
+      );
+
+  bool get isOnElevatedPlatform => _isOnElevatedPlatform;
+  double get verticalVelocity => _yVelocity;
 
   @override
   Future<void> onLoad() async {
-    add(RectangleHitbox(
-      position: Vector2(8, 8),
-      size: Vector2(size.x - 16, size.y - 16),
-    ));
+    // Tall and narrow: the sprite's wide frame is mostly swinging arms, so the
+    // hitbox tracks the torso and legs instead of the full 80px width.
+    add(
+      RectangleHitbox(
+        position: Vector2(12, 10),
+        size: Vector2(size.x - 24, size.y - 12),
+      ),
+    );
 
-    _bodyStrokePaint = Paint()
-      ..color = GameConstants.neonCyan
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    _bodyGlowPaint = Paint()
-      ..color = GameConstants.neonCyan.withAlpha(50)
-      ..strokeWidth = 5.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
-
-    _bodyFillPaint = Paint()..style = PaintingStyle.fill;
-
-    _eyeWhitePaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    _eyePupilPaint = Paint()
-      ..color = const Color(0xFFFF2020)
-      ..style = PaintingStyle.fill;
-
-    _teethPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    _spinesPaint = Paint()
-      ..color = GameConstants.neonOrange
-      ..style = PaintingStyle.fill;
-
-    _clawPaint = Paint()
-      ..color = GameConstants.neonCyan.withAlpha(200)
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke;
-
-    _bellyPaint = Paint()..style = PaintingStyle.fill;
+    // Recolours the sprite's silhouette to the theme accent and blurs it, so the
+    // character reads as part of the same world as the glowing cacti.
+    _glowPaint = Paint();
+    _syncGlowColor();
 
     _particlePaint = Paint()..style = PaintingStyle.fill;
 
     _shadowPaint = Paint()..style = PaintingStyle.fill;
+
+    await applyCharacter(game.selectedCharacter);
+  }
+
+  /// Whose poses are on screen right now. Stays on the previous character if a
+  /// sprite set fails to load, and is null only before the first one arrives.
+  GameCharacter? loadedCharacter;
+
+  /// Loads the six poses belonging to [character]. Called once on load and again
+  /// every time the settings screen picks a different runner.
+  Future<void> applyCharacter(GameCharacter character) async {
+    final String path = character.spritePath;
+    final String id = character.id;
+    try {
+      final loaded = await Future.wait([
+        Sprite.load('$path/${id}_idle.png'),
+        Sprite.load('$path/${id}_walk1.png'),
+        Sprite.load('$path/${id}_walk2.png'),
+        Sprite.load('$path/${id}_jump.png'),
+        Sprite.load('$path/${id}_fall.png'),
+        Sprite.load('$path/${id}_hurt.png'),
+      ]);
+      _idleSprite = loaded[0];
+      _walk1Sprite = loaded[1];
+      _walk2Sprite = loaded[2];
+      _jumpSprite = loaded[3];
+      _fallSprite = loaded[4];
+      _hurtSprite = loaded[5];
+      loadedCharacter = character;
+    } catch (_) {
+      // A sprite set that will not load must not take the run down with it —
+      // the runner keeps its shadow and dust until a working one is chosen.
+    }
+  }
+
+  /// Rebuilds the glow filter when the day/night crossfade shifts the accent.
+  void _syncGlowColor() {
+    final Color accent = game.theme.accent;
+    if (_glowColor == accent) return;
+    _glowColor = accent;
+    _glowPaint
+      ..colorFilter = ColorFilter.mode(accent.withAlpha(190), BlendMode.srcATop)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0);
   }
 
   void _spawnParticle(Offset position, Offset velocity) {
@@ -119,13 +144,11 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     if (_isOnGround) {
       _yVelocity = -GameConstants.jumpForce;
       _isOnGround = false;
+      _isOnElevatedPlatform = false;
       for (int i = 0; i < 15; i++) {
         _spawnParticle(
           Offset(size.x * 0.4, size.y - 2),
-          Offset(
-            (i - 7) * 20.0 - 50.0,
-            -40.0 - Random().nextDouble() * 60,
-          ),
+          Offset((i - 7) * 20.0 - 50.0, -40.0 - Random().nextDouble() * 60),
         );
       }
     }
@@ -134,16 +157,29 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   void reset() {
     _yVelocity = 0.0;
     _isOnGround = true;
+    _isOnElevatedPlatform = false;
+    _isRunning = false;
+    _facingLeft = false;
+    _animationTime = 0.0;
+    _runStep = 0;
     _particlePool.addAll(_particles);
     _particles.clear();
     final gameHeight = game.size.y;
-    position = Vector2(60.0, gameHeight - GameConstants.dinoGroundYOffset - size.y);
+    position = Vector2(
+      60.0,
+      gameHeight - GameConstants.dinoGroundYOffset - size.y,
+    );
   }
 
   @override
-  void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
+  void onCollisionStart(
+    Set<Vector2> intersectionPoints,
+    PositionComponent other,
+  ) {
     super.onCollisionStart(intersectionPoints, other);
-    if (other is Obstacle) {
+    if (other is Coin) {
+      other.collect();
+    } else if (other is Obstacle) {
       game.triggerGameOver();
     }
   }
@@ -153,33 +189,81 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     super.update(dt);
     if (game.isIntro) return;
 
-    _breathPhase += dt * 3.0;
+    final worldLeft = game.worldOffset + position.x;
+    final worldRight = worldLeft + size.x;
+    final feetY = position.y + size.y;
+
+    if (_isOnElevatedPlatform &&
+        !game.hasPlatformSupport(
+          worldLeft: worldLeft,
+          worldRight: worldRight,
+          feetY: feetY,
+        )) {
+      _isOnGround = false;
+      _isOnElevatedPlatform = false;
+    }
 
     if (!_isOnGround) {
+      final previousFeetY = position.y + size.y;
       _yVelocity += GameConstants.gravity * dt;
       position.y += _yVelocity * dt;
+      final currentFeetY = position.y + size.y;
       final groundY = game.size.y - GameConstants.dinoGroundYOffset - size.y;
-      if (position.y >= groundY) {
+
+      final landingSurface = _yVelocity >= 0
+          ? game.landingSurfaceY(
+              worldLeft: worldLeft,
+              worldRight: worldRight,
+              previousFeetY: previousFeetY,
+              currentFeetY: currentFeetY,
+            )
+          : null;
+      if (landingSurface != null) {
+        position.y = landingSurface - size.y;
+        _yVelocity = 0.0;
+        _isOnGround = true;
+        _isOnElevatedPlatform = true;
+      } else if (position.y >= groundY) {
         position.y = groundY;
         _yVelocity = 0.0;
         _isOnGround = true;
+        _isOnElevatedPlatform = false;
       }
     }
 
     if (game.isGameOver) return;
 
-    if (_isOnGround) {
-      _animationTime += dt;
-      if (_animationTime >= 0.07) {
+    // Only the world moving underfoot counts as running — the runner is pinned in X
+    final double worldSpeed = game.worldSpeed;
+    _isRunning = worldSpeed.abs() > GameConstants.movingThreshold;
+    if (worldSpeed > GameConstants.movingThreshold) {
+      _facingLeft = false;
+    } else if (worldSpeed < -GameConstants.movingThreshold) {
+      _facingLeft = true;
+    }
+
+    if (_isOnGround && _isRunning) {
+      // Step cadence follows the actual pace, so backing up looks slower
+      final double pace = (game.currentSpeed / GameConstants.maxRunSpeed).clamp(
+        0.35,
+        1.0,
+      );
+      _animationTime += dt * pace;
+      if (_animationTime >= GameConstants.runnerWalkFrameTime) {
         _runStep = (_runStep + 1) % 2;
         _animationTime = 0.0;
       }
       _particleTimer += dt;
       if (_particleTimer >= _particleSpawnInterval) {
         _particleTimer = 0.0;
+        // Dust kicks out behind the heel, whichever way the runner is headed
+        final double dustDir = _facingLeft ? 1.0 : -1.0;
         _spawnParticle(
-          Offset(size.x * 0.3, size.y - 2),
-          Offset(-100.0 - (game.currentSpeed * 0.2), -15.0 - Random().nextDouble() * 25),
+          Offset(size.x * (_facingLeft ? 0.7 : 0.3), size.y - 2),
+          Offset(
+            dustDir * (100.0 + game.currentSpeed * 0.2),
+            -15.0 - Random().nextDouble() * 25,
+          ),
         );
       }
     }
@@ -195,17 +279,26 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     }
   }
 
+  /// Picks the pose for the current physics and input state.
+  Sprite? get _currentSprite {
+    if (game.isGameOver) return _hurtSprite;
+    if (!_isOnGround) return _yVelocity < 0 ? _jumpSprite : _fallSprite;
+    if (!_isRunning) return _idleSprite;
+    return _runStep == 0 ? _walk1Sprite : _walk2Sprite;
+  }
+
   @override
   void render(Canvas canvas) {
     // Dynamic ground shadow
-    final double groundY = game.size.y - GameConstants.dinoGroundYOffset - size.y;
+    final double groundY =
+        game.size.y - GameConstants.dinoGroundYOffset - size.y;
     final double distToGround = groundY - position.y;
     final double shadowScale = (1.0 - (distToGround / 350.0)).clamp(0.15, 1.0);
     _shadowPaint.color = Colors.black.withAlpha((100 * shadowScale).toInt());
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(size.x * 0.45, size.y + distToGround - 1),
-        width: size.x * 0.85 * shadowScale,
+        center: Offset(size.x * 0.5, size.y + distToGround - 1),
+        width: size.x * 0.9 * shadowScale,
         height: 8.0 * shadowScale,
       ),
       _shadowPaint,
@@ -213,178 +306,38 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
 
     super.render(canvas);
 
-    // Particles
+    _syncGlowColor();
+
+    // Particles sit behind the character so the dust trails out from the heels
     for (int i = 0; i < _particles.length; i++) {
       final p = _particles[i];
-      _particlePaint.color = GameConstants.neonCyan.withAlpha((p.alpha.clamp(0.0, 1.0) * 180).toInt());
+      _particlePaint.color = game.theme.accent.withAlpha(
+        (p.alpha.clamp(0.0, 1.0) * 180).toInt(),
+      );
       canvas.drawCircle(p.position, 2.0 * p.alpha, _particlePaint);
     }
 
-    final double breathOffset = sin(_breathPhase) * 1.2;
-    final double headBob = _isOnGround ? sin(_animationTime * (2 * pi / 0.07)) * 1.0 : 0.0;
-    final double tailWag = _isOnGround ? cos(_animationTime * (2 * pi / 0.07)) * 2.5 : 0.0;
+    final sprite = _currentSprite;
+    if (sprite == null) return;
 
-    // Body fill gradient
-    _bodyFillPaint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        GameConstants.neonCyan.withAlpha(100),
-        const Color(0xFF003040).withAlpha(130),
-        const Color(0xFF001520).withAlpha(80),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
-
-    // Belly lighter gradient
-    _bellyPaint.shader = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        GameConstants.neonCyan.withAlpha(40),
-        GameConstants.neonCyan.withAlpha(15),
-      ],
-    ).createShader(Rect.fromLTWH(10, 30, 30, 20));
-
-    // Build body path
-    _bodyPath.reset();
-    // Tail
-    _bodyPath.moveTo(4, 38 + tailWag);
-    _bodyPath.quadraticBezierTo(-2, 30, 0, 42 + tailWag);
-    _bodyPath.quadraticBezierTo(3, 46, 8, 44);
-    _bodyPath.lineTo(14, 46 + breathOffset);
-    // Belly
-    _bodyPath.lineTo(14, 28);
-    // Spine to neck
-    _bodyPath.lineTo(30, 28);
-    // Neck
-    _bodyPath.lineTo(30, 12 + headBob);
-    // Head top
-    _bodyPath.quadraticBezierTo(32, 6 + headBob, 38, 6 + headBob);
-    _bodyPath.lineTo(54, 6 + headBob);
-    // Snout front
-    _bodyPath.quadraticBezierTo(58, 8 + headBob, 58, 14 + headBob);
-    // Jaw underside
-    _bodyPath.lineTo(56, 20 + headBob);
-    _bodyPath.lineTo(38, 22 + headBob);
-    // Throat
-    _bodyPath.lineTo(34, 28);
-    // Chest connects to belly
-    _bodyPath.lineTo(38, 36 + breathOffset);
-    _bodyPath.lineTo(30, 48 + breathOffset);
-    _bodyPath.lineTo(14, 48 + breathOffset);
-    _bodyPath.close();
-
-    canvas.drawPath(_bodyPath, _bodyFillPaint);
-
-    // Belly patch
-    final bellyPath = Path()
-      ..moveTo(18, 36)
-      ..quadraticBezierTo(24, 34, 30, 36 + breathOffset)
-      ..lineTo(28, 46 + breathOffset)
-      ..lineTo(16, 46 + breathOffset)
-      ..close();
-    canvas.drawPath(bellyPath, _bellyPaint);
-
-    // Glow + outline stroke
-    canvas.drawPath(_bodyPath, _bodyGlowPaint);
-    canvas.drawPath(_bodyPath, _bodyStrokePaint);
-
-    // Spines along back
-    for (int i = 0; i < 5; i++) {
-      final sx = 14.0 + i * 4.5;
-      final path = Path()
-        ..moveTo(sx, 28)
-        ..lineTo(sx + 1.5, 22 - i * 0.5)
-        ..lineTo(sx + 3, 28);
-      canvas.drawPath(path, _spinesPaint);
+    canvas.save();
+    // Mirror in place when heading back the other way
+    if (_facingLeft) {
+      canvas.translate(size.x, 0);
+      canvas.scale(-1, 1);
     }
 
-    // Eye with sclera and pupil
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset(46, 11 + headBob), width: 7, height: 6),
-      _eyeWhitePaint,
+    // Neon rim: the same pose, blown up slightly and blurred, drawn underneath
+    const double glowSpread = 4.0;
+    sprite.render(
+      canvas,
+      position: Vector2(-glowSpread / 2, -glowSpread / 2),
+      size: Vector2(size.x + glowSpread, size.y + glowSpread),
+      overridePaint: _glowPaint,
     );
-    canvas.drawCircle(Offset(47.5, 11 + headBob), 2.2, _eyePupilPaint);
-    // Eye glint
-    canvas.drawCircle(Offset(48.5, 10 + headBob), 0.8,
-      Paint()..color = Colors.white..style = PaintingStyle.fill);
 
-    // Teeth along jaw
-    for (int i = 0; i < 4; i++) {
-      final tx = 42.0 + i * 3.5;
-      final path = Path()
-        ..moveTo(tx, 19 + headBob)
-        ..lineTo(tx + 1, 22 + headBob)
-        ..lineTo(tx + 2, 19 + headBob);
-      canvas.drawPath(path, _teethPaint);
-    }
+    sprite.render(canvas, position: Vector2.zero(), size: size);
 
-    // Nostril
-    canvas.drawCircle(Offset(55, 9 + headBob), 1.2,
-      Paint()..color = GameConstants.neonCyan.withAlpha(100)..style = PaintingStyle.fill);
-
-    // Small arm with claws
-    canvas.drawLine(Offset(36, 30), Offset(40, 30), _clawPaint);
-    canvas.drawLine(Offset(40, 30), Offset(42, 28), _clawPaint);
-    canvas.drawLine(Offset(40, 30), Offset(42, 32), _clawPaint);
-
-    // Legs
-    _leftLegPath.reset();
-    _rightLegPath.reset();
-
-    if (!_isOnGround) {
-      _leftLegPath.moveTo(18, 48);
-      _leftLegPath.lineTo(15, 56);
-      _leftLegPath.lineTo(20, 56);
-      _leftLegPath.lineTo(22, 54);
-
-      _rightLegPath.moveTo(28, 48);
-      _rightLegPath.lineTo(25, 56);
-      _rightLegPath.lineTo(30, 56);
-      _rightLegPath.lineTo(32, 54);
-    } else {
-      if (_runStep == 0) {
-        _leftLegPath.moveTo(18, 48);
-        _leftLegPath.lineTo(16, 60);
-        _leftLegPath.lineTo(12, 62);
-        _leftLegPath.lineTo(20, 62);
-        _leftLegPath.lineTo(22, 60);
-
-        _rightLegPath.moveTo(28, 48);
-        _rightLegPath.lineTo(25, 54);
-        _rightLegPath.lineTo(28, 52);
-        _rightLegPath.lineTo(30, 54);
-      } else {
-        _leftLegPath.moveTo(18, 48);
-        _leftLegPath.lineTo(15, 54);
-        _leftLegPath.lineTo(18, 52);
-        _leftLegPath.lineTo(20, 54);
-
-        _rightLegPath.moveTo(28, 48);
-        _rightLegPath.lineTo(26, 60);
-        _rightLegPath.lineTo(22, 62);
-        _rightLegPath.lineTo(30, 62);
-        _rightLegPath.lineTo(32, 60);
-      }
-    }
-
-    canvas.drawPath(_leftLegPath, _bodyFillPaint);
-    canvas.drawPath(_leftLegPath, _bodyGlowPaint);
-    canvas.drawPath(_leftLegPath, _bodyStrokePaint);
-    canvas.drawPath(_rightLegPath, _bodyFillPaint);
-    canvas.drawPath(_rightLegPath, _bodyGlowPaint);
-    canvas.drawPath(_rightLegPath, _bodyStrokePaint);
-
-    // Toe claws on grounded legs
-    if (_isOnGround) {
-      if (_runStep == 0) {
-        canvas.drawLine(Offset(13, 62), Offset(11, 64), _clawPaint);
-        canvas.drawLine(Offset(17, 62), Offset(16, 64), _clawPaint);
-      } else {
-        canvas.drawLine(Offset(23, 62), Offset(21, 64), _clawPaint);
-        canvas.drawLine(Offset(27, 62), Offset(26, 64), _clawPaint);
-      }
-    }
+    canvas.restore();
   }
 }

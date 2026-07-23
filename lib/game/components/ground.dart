@@ -3,14 +3,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
-
-class GrassBlade {
-  double x;
-  final double height;
-  final double sway;
-
-  GrassBlade({required this.x, required this.height, required this.sway});
-}
+import 'foliage.dart';
 
 class GroundRock {
   double x;
@@ -18,28 +11,62 @@ class GroundRock {
   final double w;
   final double h;
 
-  GroundRock({required this.x, required this.y, required this.w, required this.h});
+  GroundRock({
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+  });
+}
+
+class _GroundTerrainLoader extends Component {
+  final Ground ground;
+
+  _GroundTerrainLoader(this.ground);
+
+  @override
+  Future<void> onLoad() => ground._loadTerrainSpritesSafely();
 }
 
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
+  static const double earthHeight = 140.0;
+  static const double bandHeight = earthHeight;
+  static const double terrainSpriteHeight = 30.0;
+
+  static const List<double> _terrainSourceWidths = [380, 200];
+  static const List<double> _terrainSourceHeights = [94, 100];
+
+  List<Sprite> _nightTerrainSprites = const [];
+  List<Sprite> _dayTerrainSprites = const [];
+  final Future<List<Sprite>> Function() _terrainLoader;
+
   late Paint _horizonPaint;
   late Paint _horizonGlowPaint;
   late Paint _gridPaint;
-  late Paint _grassPaint;
   late Paint _rockPaint;
   late Paint _fogPaint;
 
   double _scrollOffset = 0.0;
-  double _grassTime = 0.0;
 
-  final List<GrassBlade> _grassBlades = [];
   final List<GroundRock> _rocks = [];
   final Random _random = Random();
 
-  Ground() : super(priority: 1);
+  Ground({@visibleForTesting Future<List<Sprite>> Function()? terrainLoader})
+    : _terrainLoader = terrainLoader ?? _loadTerrainSprites,
+      super(priority: 1);
+
+  static List<String> terrainAssetNames({required bool isDay}) => isDay
+      ? const [
+          'environment/ground_grass_broken.png',
+          'environment/ground_grass_small_broken.png',
+        ]
+      : const [
+          'environment/ground_cake_broken.png',
+          'environment/ground_cake_small_broken.png',
+        ];
 
   @override
-  Future<void> onLoad() async {
+  void onLoad() {
     _horizonPaint = Paint()
       ..color = GameConstants.neonCyan
       ..strokeWidth = 2.5
@@ -56,39 +83,60 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
-    _grassPaint = Paint()
-      ..color = GameConstants.neonGreen.withAlpha(120)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
     _rockPaint = Paint()
       ..color = const Color(0xFF2A2A4A)
       ..style = PaintingStyle.fill;
 
     _fogPaint = Paint()..style = PaintingStyle.fill;
+
+    // Child loaders begin inside Flame's lifecycle instead of whichever async
+    // zone constructed the Ground (notably WidgetTester's fake async zone).
+    add(_GroundTerrainLoader(this));
+
+    // A child, not a sibling: children render after their parent, so the plants
+    // are guaranteed to land on top of the terrain plane drawn below.
+    add(Foliage());
+  }
+
+  static Future<List<Sprite>> _loadTerrainSprites() => Future.wait(
+    [
+      ...terrainAssetNames(isDay: false),
+      ...terrainAssetNames(isDay: true),
+    ].map(Sprite.load),
+  );
+
+  Future<void> _loadTerrainSpritesSafely() async {
+    try {
+      final terrainSprites = await _terrainLoader();
+      _nightTerrainSprites = terrainSprites.sublist(0, 2);
+      _dayTerrainSprites = terrainSprites.sublist(2, 4);
+    } catch (_) {
+      // The procedural ground plane remains playable if optional terrain art
+      // is missing; leave both sprite lists empty so rendering skips the strip.
+      _nightTerrainSprites = const [];
+      _dayTerrainSprites = const [];
+    }
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    this.size = Vector2(size.x, 100);
-    position = Vector2(0, size.y - GameConstants.dinoGroundYOffset - 100);
+    this.size = Vector2(size.x, earthHeight);
+    position = Vector2(
+      0,
+      size.y - GameConstants.dinoGroundYOffset - earthHeight,
+    );
 
-    if (_grassBlades.isEmpty) {
-      for (int i = 0; i < 40; i++) {
-        _grassBlades.add(GrassBlade(
-          x: _random.nextDouble() * size.x,
-          height: _random.nextDouble() * 10 + 4,
-          sway: _random.nextDouble() * 2.0 + 0.5,
-        ));
-      }
+    if (_rocks.isEmpty) {
       for (int i = 0; i < 12; i++) {
-        _rocks.add(GroundRock(
-          x: _random.nextDouble() * size.x,
-          y: _random.nextDouble() * 6 + 4,
-          w: _random.nextDouble() * 6 + 3,
-          h: _random.nextDouble() * 3 + 2,
-        ));
+        _rocks.add(
+          GroundRock(
+            x: _random.nextDouble() * size.x,
+            y: 10 + _random.nextDouble() * (earthHeight - 20),
+            w: _random.nextDouble() * 6 + 3,
+            h: _random.nextDouble() * 3 + 2,
+          ),
+        );
       }
     }
   }
@@ -98,21 +146,53 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     super.update(dt);
     if (game.isGameOver || game.isIntro) return;
 
-    final speed = game.currentSpeed;
-    _scrollOffset = (_scrollOffset + speed * dt) % 60.0;
-    _grassTime += dt;
+    // Signed speed: the grid and scatter run either way the player walks
+    final speed = game.worldSpeed;
+    _scrollOffset = _positiveMod(_scrollOffset + speed * dt, 60.0);
 
+    // Recycle margin sits outside every respawn position, so a rock that just
+    // wrapped can never trip the opposite edge on the very next frame
     final screenWidth = game.size.x;
-    for (int i = 0; i < _grassBlades.length; i++) {
-      _grassBlades[i].x -= speed * dt * 0.7;
-      if (_grassBlades[i].x < -10) {
-        _grassBlades[i].x = screenWidth + _random.nextDouble() * 50;
+    const double margin = 100.0;
+    for (int i = 0; i < _rocks.length; i++) {
+      final rock = _rocks[i];
+      rock.x -= speed * dt * 0.5;
+      if (rock.x < -margin) {
+        rock.x = screenWidth + _random.nextDouble() * 80;
+      } else if (rock.x > screenWidth + margin) {
+        rock.x = -_random.nextDouble() * 80;
       }
     }
-    for (int i = 0; i < _rocks.length; i++) {
-      _rocks[i].x -= speed * dt * 0.5;
-      if (_rocks[i].x < -10) {
-        _rocks[i].x = screenWidth + _random.nextDouble() * 80;
+  }
+
+  /// Keeps a wrapped phase inside [0, range) whichever direction it drifts,
+  /// so a negative scroll delta never flips the grid inside out.
+  double _positiveMod(double value, double range) {
+    final result = value % range;
+    return result < 0 ? result + range : result;
+  }
+
+  void _renderTerrainStrip(Canvas canvas) {
+    final sprites = game.theme.isDay
+        ? _dayTerrainSprites
+        : _nightTerrainSprites;
+    if (sprites.length != 2) return;
+
+    final logicalWidths = <double>[
+      _terrainSourceWidths[0] * terrainSpriteHeight / _terrainSourceHeights[0],
+      _terrainSourceWidths[1] * terrainSpriteHeight / _terrainSourceHeights[1],
+    ];
+    final patternWidth = logicalWidths[0] + logicalWidths[1];
+    var x = _positiveMod(-game.worldOffset, patternWidth) - patternWidth;
+
+    while (x < size.x) {
+      for (var index = 0; index < sprites.length; index++) {
+        sprites[index].render(
+          canvas,
+          position: Vector2(x, earthHeight),
+          size: Vector2(logicalWidths[index], terrainSpriteHeight),
+        );
+        x += logicalWidths[index];
       }
     }
   }
@@ -121,19 +201,23 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   void render(Canvas canvas) {
     super.render(canvas);
 
+    // Colours are pulled per frame rather than baked in onLoad: the day/night
+    // crossfade moves them continuously while the player runs
+    final theme = game.theme;
+    _horizonPaint.color = theme.accent;
+    _horizonGlowPaint.color = theme.accent.withAlpha(30);
+    _rockPaint.color = theme.rock;
+
     // 1. Ground terrain gradient fill
+    final terrainHeight = size.y + GameConstants.dinoGroundYOffset;
     final terrainPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [
-          GameConstants.groundColor,
-          const Color(0xFF0A0A1E),
-          const Color(0xFF050510),
-        ],
+        colors: [theme.groundTop, theme.groundMid, theme.groundBottom],
         stops: const [0.0, 0.4, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), terrainPaint);
+      ).createShader(Rect.fromLTWH(0, 0, size.x, terrainHeight));
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.x, terrainHeight), terrainPaint);
 
     // 2. Horizon glow line
     canvas.drawLine(const Offset(0, 0), Offset(size.x, 0), _horizonGlowPaint);
@@ -146,8 +230,10 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     for (int i = 0; i <= verticalLines; i++) {
       final double ratio = i / verticalLines;
       final double endX = ratio * size.x;
-      final alpha = (50 * (1.0 - (ratio - 0.5).abs() * 1.8)).clamp(10, 50).toInt();
-      _gridPaint.color = GameConstants.neonCyan.withAlpha(alpha);
+      final alpha = (50 * (1.0 - (ratio - 0.5).abs() * 1.8))
+          .clamp(10, 50)
+          .toInt();
+      _gridPaint.color = theme.accent.withAlpha(alpha);
       canvas.drawLine(Offset(centerX, 0), Offset(endX, gridHeight), _gridPaint);
     }
 
@@ -158,7 +244,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       final double y = gridHeight * ratio * ratio;
       final double halfWidth = centerX * ratio;
       final alpha = (60 * ratio).clamp(8, 60).toInt();
-      _gridPaint.color = GameConstants.neonCyan.withAlpha(alpha);
+      _gridPaint.color = theme.accent.withAlpha(alpha);
       canvas.drawLine(
         Offset(centerX - halfWidth, y),
         Offset(centerX + halfWidth, y),
@@ -178,28 +264,15 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       );
     }
 
-    // 5. Swaying grass blades
-    for (int i = 0; i < _grassBlades.length; i++) {
-      final blade = _grassBlades[i];
-      final swayOffset = sin(_grassTime * blade.sway + blade.x * 0.1) * 3.0;
-      _grassPaint.color = GameConstants.neonGreen.withAlpha(
-        (80 + 40 * sin(_grassTime * blade.sway)).toInt().clamp(40, 120),
-      );
-      canvas.drawLine(
-        Offset(blade.x, 3),
-        Offset(blade.x + swayOffset, 3 - blade.height),
-        _grassPaint,
-      );
-    }
+    // 5. Supplied lower terrain. Foliage remains a child and therefore renders
+    // above this strip.
+    _renderTerrainStrip(canvas);
 
     // 6. Atmospheric fog near horizon
     _fogPaint.shader = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        GameConstants.neonPurple.withAlpha(20),
-        Colors.transparent,
-      ],
+      colors: [theme.fog.withAlpha(20), Colors.transparent],
     ).createShader(Rect.fromLTWH(0, 0, size.x, 20));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x, 20), _fogPaint);
   }

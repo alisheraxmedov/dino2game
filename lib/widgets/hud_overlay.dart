@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../constants/game_theme.dart';
 import '../game/dino_game.dart';
-import '../constants/game_constants.dart';
 
 class HudOverlay extends StatelessWidget {
   final DinoGame game;
@@ -14,94 +14,108 @@ class HudOverlay extends StatelessWidget {
       top: 16.0,
       right: 16.0,
       left: 16.0,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10.0),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 10.0),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      GameConstants.bgDark.withAlpha(160),
-                      GameConstants.bgDark.withAlpha(100),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(10.0),
-                  border: Border.all(
-                    color: GameConstants.neonCyan.withAlpha(40),
-                    width: 1.0,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: GameConstants.neonGreen,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: GameConstants.neonGreen.withAlpha(120),
-                            blurRadius: 4.0,
+      // The chrome follows the sky: dark glass at night, pale glass by day
+      child: ValueListenableBuilder<GameTheme>(
+        valueListenable: game.themeNotifier,
+        builder: (context, theme, child) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildPill(
+                theme: theme,
+                borderColor: theme.accent.withAlpha(40),
+                // Driven by a notifier so the pill tracks movement without
+                // rebuilding this whole overlay every frame
+                child: ValueListenableBuilder<int>(
+                  valueListenable: game.directionNotifier,
+                  builder: (context, direction, child) {
+                    final statusColor = direction > 0
+                        ? theme.grass
+                        : direction < 0
+                            ? theme.thorn
+                            : theme.accent.withAlpha(120);
+                    final statusLabel = direction > 0
+                        ? 'FORWARD'
+                        : direction < 0
+                            ? 'REVERSE'
+                            : 'IDLE';
+
+                    return Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: statusColor.withAlpha(120),
+                                blurRadius: 4.0,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6.0),
-                    const Icon(
-                      Icons.bolt,
-                      color: GameConstants.neonCyan,
-                      size: 14.0,
-                    ),
-                    const SizedBox(width: 4.0),
-                    const Text(
-                      'RUNNING',
-                      style: TextStyle(
-                        fontSize: 10.0,
-                        fontWeight: FontWeight.w800,
-                        color: GameConstants.neonCyan,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
+                        ),
+                        const SizedBox(width: 6.0),
+                        Icon(
+                          theme.isDay ? Icons.wb_sunny_rounded : Icons.nightlight_round,
+                          color: theme.accent,
+                          size: 14.0,
+                        ),
+                        const SizedBox(width: 4.0),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(
+                            fontSize: 10.0,
+                            fontWeight: FontWeight.w800,
+                            color: theme.accent,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
-            ),
-          ),
 
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10.0),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      GameConstants.bgDark.withAlpha(100),
-                      GameConstants.bgDark.withAlpha(160),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(10.0),
-                  border: Border.all(
-                    color: GameConstants.neonYellow.withAlpha(30),
-                    width: 1.0,
-                  ),
-                ),
+              _buildPill(
+                theme: theme,
+                borderColor: theme.highlight.withAlpha(40),
                 child: Row(
                   children: [
+                    Icon(
+                      Icons.monetization_on_rounded,
+                      color: theme.highlight,
+                      size: 16.0,
+                    ),
+                    const SizedBox(width: 4.0),
+                    ValueListenableBuilder<int>(
+                      valueListenable: game.coinNotifier,
+                      builder: (context, coins, child) {
+                        return Text(
+                          coins.toString(),
+                          style: TextStyle(
+                            fontSize: 14.0,
+                            fontWeight: FontWeight.w800,
+                            color: theme.highlight,
+                            fontFamily: 'monospace',
+                          ),
+                        );
+                      },
+                    ),
+                    Container(
+                      width: 1,
+                      height: 16,
+                      margin: const EdgeInsets.symmetric(horizontal: 10.0),
+                      color: theme.accent.withAlpha(60),
+                    ),
                     if (game.highScore > 0) ...[
                       Text(
                         'HI ${game.highScore.toString().padLeft(5, '0')}',
                         style: TextStyle(
                           fontSize: 14.0,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white.withAlpha(100),
+                          color: theme.accent.withAlpha(150),
                           fontFamily: 'monospace',
                           letterSpacing: 1.0,
                         ),
@@ -110,7 +124,7 @@ class HudOverlay extends StatelessWidget {
                         width: 1,
                         height: 16,
                         margin: const EdgeInsets.symmetric(horizontal: 10.0),
-                        color: Colors.white.withAlpha(30),
+                        color: theme.accent.withAlpha(60),
                       ),
                     ],
                     ValueListenableBuilder<int>(
@@ -118,15 +132,15 @@ class HudOverlay extends StatelessWidget {
                       builder: (context, score, child) {
                         return Text(
                           score.toString().padLeft(5, '0'),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18.0,
                             fontWeight: FontWeight.w900,
-                            color: GameConstants.neonYellow,
+                            color: theme.highlight,
                             fontFamily: 'monospace',
                             letterSpacing: 1.5,
                             shadows: [
                               Shadow(
-                                color: GameConstants.neonYellow,
+                                color: theme.highlight.withAlpha(160),
                                 blurRadius: 6.0,
                               ),
                             ],
@@ -137,9 +151,36 @@ class HudOverlay extends StatelessWidget {
                   ],
                 ),
               ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPill({
+    required GameTheme theme,
+    required Color borderColor,
+    required Widget child,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10.0),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                theme.panel.withAlpha(170),
+                theme.panel.withAlpha(110),
+              ],
             ),
+            borderRadius: BorderRadius.circular(10.0),
+            border: Border.all(color: borderColor, width: 1.0),
           ),
-        ],
+          child: child,
+        ),
       ),
     );
   }

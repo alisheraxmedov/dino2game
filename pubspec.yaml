@@ -32,9 +32,14 @@ flutter:
 
   uses-material-design: true
 
-  # Kenney "Platformer Characters 1" runner sprites (CC0)
+  # Kenney "Platformer Characters 1" runner sprites (CC0). One folder per
+  # selectable character — asset directories are not scanned recursively.
   assets:
     - assets/images/characters/player/
+    - assets/images/characters/adventurer/
+    - assets/images/characters/female/
+    - assets/images/characters/soldier/
+    - assets/images/characters/zombie/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

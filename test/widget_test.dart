@@ -8,15 +8,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:dino2game/constants/game_characters.dart';
 import 'package:dino2game/constants/game_constants.dart';
 import 'package:dino2game/constants/game_theme.dart';
 import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
 import 'package:dino2game/widgets/controls_overlay.dart';
+import 'package:dino2game/widgets/settings_overlay.dart';
 
 /// Stub overlay builders — the real widgets are exercised by the widget test.
 Map<String, OverlayWidgetBuilder<DinoGame>> _stubOverlays() => {
-      for (final name in ['MainMenu', 'GameOver', 'HUD', 'Controls'])
+      for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
         name: (context, game) => const SizedBox.shrink(),
     };
 
@@ -193,6 +195,92 @@ void main() {
 
     expect(game.isIntro, isTrue);
     expect(game.theme.isDay, isFalse);
+  });
+
+  test('a fresh install runs as the player', () async {
+    SharedPreferences.setMockInitialValues({});
+    final game = await _bootGame();
+
+    expect(game.selectedCharacter.id, GameCharacter.player.id);
+  });
+
+  test('a saved runner is restored on launch, never asked for again', () async {
+    SharedPreferences.setMockInitialValues({GameConstants.characterKey: 'zombie'});
+    final game = await _bootGame();
+
+    expect(game.selectedCharacter.id, GameCharacter.zombie.id);
+  });
+
+  test('an unknown stored id falls back to the player', () async {
+    SharedPreferences.setMockInitialValues({GameConstants.characterKey: 'triceratops'});
+    final game = await _bootGame();
+
+    expect(game.selectedCharacter.id, GameCharacter.player.id);
+  });
+
+  test('picking a runner writes it straight to storage', () async {
+    SharedPreferences.setMockInitialValues({});
+    final game = await _bootGame();
+
+    await game.selectCharacter(GameCharacter.soldier);
+
+    expect(game.selectedCharacter.id, GameCharacter.soldier.id);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(GameConstants.characterKey), GameCharacter.soldier.id);
+    // The pick is worthless if that sprite folder does not resolve
+    expect(game.dino.loadedCharacter?.id, GameCharacter.soldier.id);
+  });
+
+  test('every runner in the picker has a sprite set that loads', () async {
+    SharedPreferences.setMockInitialValues({});
+    final game = await _bootGame();
+
+    for (final character in GameCharacter.all) {
+      await game.dino.applyCharacter(character);
+      expect(game.dino.loadedCharacter?.id, character.id,
+          reason: 'the ${character.id} poses have to load from assets');
+    }
+  });
+
+  testWidgets('the settings screen offers every runner and saves the pick',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final game = DinoGame();
+    await tester.pumpWidget(
+      MaterialApp(
+        // Scaffold stands in for the app shell: the overlay uses InkWell, which
+        // needs a Material ancestor exactly as it has in main.dart
+        home: Scaffold(
+          body: GameWidget<DinoGame>(
+            game: game,
+            overlayBuilderMap: {
+              ..._stubOverlays(),
+              'Settings': (context, game) => SettingsOverlay(game: game),
+            },
+            initialActiveOverlays: const ['MainMenu'],
+          ),
+        ),
+      ),
+    );
+    for (int i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    // Settings sit in front of the menu, before any run has started
+    game.openSettings();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    for (final character in GameCharacter.all) {
+      expect(find.text(character.label), findsOneWidget);
+    }
+
+    await tester.tap(find.text(GameCharacter.zombie.label));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(game.selectedCharacter.id, GameCharacter.zombie.id);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(GameConstants.characterKey), GameCharacter.zombie.id);
   });
 
   testWidgets('arrow keys reach the game even when the canvas has lost focus',

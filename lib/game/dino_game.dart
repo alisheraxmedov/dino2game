@@ -4,6 +4,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/game_characters.dart';
 import '../constants/game_constants.dart';
 import '../constants/game_theme.dart';
 import 'components/dino.dart';
@@ -84,6 +85,11 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
   bool _themeSwitching = false;
   double _lastAppliedBlend = -1.0;
 
+  /// The runner picked in the settings screen, restored from disk on launch.
+  final ValueNotifier<GameCharacter> characterNotifier =
+      ValueNotifier<GameCharacter>(GameCharacter.fallback);
+  GameCharacter get selectedCharacter => characterNotifier.value;
+
   final Random _random = Random();
   SharedPreferences? _prefs;
 
@@ -98,6 +104,20 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
   @override
   Future<void> onLoad() async {
+    // Read persistence first: the Dino picks its sprite folder from the stored
+    // character the moment it loads, so the choice must already be settled.
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      highScore = _prefs?.getInt(GameConstants.highScoreKey) ?? 0;
+      characterNotifier.value =
+          GameCharacter.fromId(_prefs?.getString(GameConstants.characterKey));
+    } catch (_) {
+      // SharedPreferences might fail on unsupported web/desktop platforms,
+      // fall back to a clean slate on the default character
+      highScore = 0;
+      characterNotifier.value = GameCharacter.fallback;
+    }
+
     // Add components in proper Z-order
     background = ParallaxBackground();
     add(background);
@@ -107,15 +127,6 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
     dino = Dino();
     add(dino);
-
-    // Load high score from local persistence
-    try {
-      _prefs = await SharedPreferences.getInstance();
-      highScore = _prefs?.getInt(GameConstants.highScoreKey) ?? 0;
-    } catch (_) {
-      // SharedPreferences might fail on unsupported web/desktop platforms, fallback to 0
-      highScore = 0;
-    }
 
     // Set Dino initial position
     dino.reset();
@@ -148,6 +159,7 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
 
     // Hide UI overlays, show the touch control pad
     overlays.remove('MainMenu');
+    overlays.remove('Settings');
     overlays.remove('GameOver');
     overlays.add('Controls');
 
@@ -281,6 +293,50 @@ class DinoGame extends FlameGame with HasCollisionDetection, TapCallbacks, Keybo
     _themeSwitching = false;
     _lastAppliedBlend = -1.0;
     _applyThemeBlend();
+  }
+
+  /// Swaps the runner and remembers the choice, so the settings screen is only
+  /// ever visited by players who want to change it.
+  Future<void> selectCharacter(GameCharacter character) async {
+    characterNotifier.value = character;
+    await _prefs?.setString(GameConstants.characterKey, character.id);
+    await dino.applyCharacter(character);
+  }
+
+  /// Settings live in front of the main menu — the character is locked in before
+  /// the run starts, never mid-run.
+  void openSettings() {
+    if (!isIntro) return;
+    overlays.remove('MainMenu');
+    overlays.add('Settings');
+  }
+
+  void closeSettings() {
+    overlays.remove('Settings');
+    overlays.add('MainMenu');
+    onRequestFocus?.call();
+  }
+
+  /// Back out of a finished run, so the character can be changed before the next
+  /// one without restarting the app.
+  void returnToMenu() {
+    _state = GameState.intro;
+    inputDirection = 0;
+    worldSpeed = 0.0;
+    directionNotifier.value = 0;
+
+    children.whereType<Obstacle>().forEach((obstacle) => obstacle.removeFromParent());
+    _layout.clear();
+    worldOffset = 0.0;
+    _maxDistance = 0.0;
+    currentScore = 0;
+    scoreNotifier.value = 0;
+    _resetTheme();
+    dino.reset();
+
+    overlays.remove('GameOver');
+    overlays.remove('Controls');
+    overlays.add('MainMenu');
   }
 
   /// Called by the on-screen touch pad. -1 backward, 0 idle, +1 forward.

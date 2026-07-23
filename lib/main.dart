@@ -7,6 +7,7 @@ import 'widgets/controls_overlay.dart';
 import 'widgets/game_over_overlay.dart';
 import 'widgets/hud_overlay.dart';
 import 'widgets/main_menu_overlay.dart';
+import 'widgets/settings_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -106,6 +107,8 @@ class _GameScreenState extends State<GameScreen> {
             autofocus: true,
             overlayBuilderMap: {
               'MainMenu': (context, game) => MainMenuOverlay(game: game),
+              // Opened from the menu, before any run starts
+              'Settings': (context, game) => SettingsOverlay(game: game),
               'GameOver': (context, game) => GameOverOverlay(game: game),
               'HUD': (context, game) => HudOverlay(game: game),
               // Added by DinoGame.startGame(), so it never covers the menus

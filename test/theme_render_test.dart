@@ -17,7 +17,7 @@ const int _width = 800;
 const int _height = 400;
 
 Map<String, OverlayWidgetBuilder<DinoGame>> _stubOverlays() => {
-      for (final name in ['MainMenu', 'GameOver', 'HUD', 'Controls'])
+      for (final name in ['MainMenu', 'Settings', 'GameOver', 'HUD', 'Controls'])
         name: (context, game) => const SizedBox.shrink(),
     };
 

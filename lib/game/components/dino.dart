@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import '../../constants/game_characters.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
 import 'obstacle.dart';
@@ -36,12 +37,14 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   final double _particleSpawnInterval = 0.04;
   double _particleTimer = 0.0;
 
-  late final Sprite _idleSprite;
-  late final Sprite _walk1Sprite;
-  late final Sprite _walk2Sprite;
-  late final Sprite _jumpSprite;
-  late final Sprite _fallSprite;
-  late final Sprite _hurtSprite;
+  // Nullable and swappable: the settings screen can change character at any
+  // point before a run, and a half-loaded set must never reach the canvas.
+  Sprite? _idleSprite;
+  Sprite? _walk1Sprite;
+  Sprite? _walk2Sprite;
+  Sprite? _jumpSprite;
+  Sprite? _fallSprite;
+  Sprite? _hurtSprite;
 
   late final Paint _glowPaint;
   late final Paint _particlePaint;
@@ -65,14 +68,6 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
       size: Vector2(size.x - 24, size.y - 12),
     ));
 
-    const path = GameConstants.runnerSpritePath;
-    _idleSprite = await Sprite.load('$path/player_idle.png');
-    _walk1Sprite = await Sprite.load('$path/player_walk1.png');
-    _walk2Sprite = await Sprite.load('$path/player_walk2.png');
-    _jumpSprite = await Sprite.load('$path/player_jump.png');
-    _fallSprite = await Sprite.load('$path/player_fall.png');
-    _hurtSprite = await Sprite.load('$path/player_hurt.png');
-
     // Recolours the sprite's silhouette to the theme accent and blurs it, so the
     // character reads as part of the same world as the glowing cacti.
     _glowPaint = Paint();
@@ -81,6 +76,39 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     _particlePaint = Paint()..style = PaintingStyle.fill;
 
     _shadowPaint = Paint()..style = PaintingStyle.fill;
+
+    await applyCharacter(game.selectedCharacter);
+  }
+
+  /// Whose poses are on screen right now. Stays on the previous character if a
+  /// sprite set fails to load, and is null only before the first one arrives.
+  GameCharacter? loadedCharacter;
+
+  /// Loads the six poses belonging to [character]. Called once on load and again
+  /// every time the settings screen picks a different runner.
+  Future<void> applyCharacter(GameCharacter character) async {
+    final String path = character.spritePath;
+    final String id = character.id;
+    try {
+      final loaded = await Future.wait([
+        Sprite.load('$path/${id}_idle.png'),
+        Sprite.load('$path/${id}_walk1.png'),
+        Sprite.load('$path/${id}_walk2.png'),
+        Sprite.load('$path/${id}_jump.png'),
+        Sprite.load('$path/${id}_fall.png'),
+        Sprite.load('$path/${id}_hurt.png'),
+      ]);
+      _idleSprite = loaded[0];
+      _walk1Sprite = loaded[1];
+      _walk2Sprite = loaded[2];
+      _jumpSprite = loaded[3];
+      _fallSprite = loaded[4];
+      _hurtSprite = loaded[5];
+      loadedCharacter = character;
+    } catch (_) {
+      // A sprite set that will not load must not take the run down with it —
+      // the runner keeps its shadow and dust until a working one is chosen.
+    }
   }
 
   /// Rebuilds the glow filter when the day/night crossfade shifts the accent.
@@ -203,7 +231,7 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   }
 
   /// Picks the pose for the current physics and input state.
-  Sprite get _currentSprite {
+  Sprite? get _currentSprite {
     if (game.isGameOver) return _hurtSprite;
     if (!_isOnGround) return _yVelocity < 0 ? _jumpSprite : _fallSprite;
     if (!_isRunning) return _idleSprite;
@@ -239,6 +267,7 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
     }
 
     final sprite = _currentSprite;
+    if (sprite == null) return;
 
     canvas.save();
     // Mirror in place when heading back the other way

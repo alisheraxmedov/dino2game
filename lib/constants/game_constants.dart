@@ -18,8 +18,7 @@ class GameConstants {
   static const double dinoHeight = 72.0;
   static const double dinoGroundYOffset = 10.0;
 
-  // Runner sprite frames (resolved under Flame's assets/images/ prefix)
-  static const String runnerSpritePath = 'characters/player';
+  // Runner sprite frames. The folder comes from the selected GameCharacter.
   static const double runnerWalkFrameTime = 0.13;
 
   // Day/night cycle: each sky holds for this long while the player is running,
@@ -29,6 +28,7 @@ class GameConstants {
 
   // shared_preferences keys
   static const String highScoreKey = 'high_score';
+  static const String characterKey = 'character_id';
 
   // Spawning (measured in pixels of world laid out, not seconds elapsed)
   static const double initialSpawnDistance = 560.0;

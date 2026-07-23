@@ -36,39 +36,57 @@ class HudOverlay extends StatelessWidget {
                     width: 1.0,
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: GameConstants.neonGreen,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: GameConstants.neonGreen.withAlpha(120),
-                            blurRadius: 4.0,
+                // Driven by a notifier so the pill tracks movement without
+                // rebuilding this whole overlay every frame
+                child: ValueListenableBuilder<int>(
+                  valueListenable: game.directionNotifier,
+                  builder: (context, direction, child) {
+                    final statusColor = direction > 0
+                        ? GameConstants.neonGreen
+                        : direction < 0
+                            ? GameConstants.neonOrange
+                            : const Color(0xFF6B7280);
+                    final statusLabel = direction > 0
+                        ? 'FORWARD'
+                        : direction < 0
+                            ? 'REVERSE'
+                            : 'IDLE';
+
+                    return Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: statusColor.withAlpha(120),
+                                blurRadius: 4.0,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6.0),
-                    const Icon(
-                      Icons.bolt,
-                      color: GameConstants.neonCyan,
-                      size: 14.0,
-                    ),
-                    const SizedBox(width: 4.0),
-                    const Text(
-                      'RUNNING',
-                      style: TextStyle(
-                        fontSize: 10.0,
-                        fontWeight: FontWeight.w800,
-                        color: GameConstants.neonCyan,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
+                        ),
+                        const SizedBox(width: 6.0),
+                        const Icon(
+                          Icons.bolt,
+                          color: GameConstants.neonCyan,
+                          size: 14.0,
+                        ),
+                        const SizedBox(width: 4.0),
+                        Text(
+                          statusLabel,
+                          style: const TextStyle(
+                            fontSize: 10.0,
+                            fontWeight: FontWeight.w800,
+                            color: GameConstants.neonCyan,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

@@ -3,20 +3,32 @@ import 'package:flutter/material.dart';
 class GameConstants {
   // Game Physics & Speeds
   static const double gravity = 1500.0;
-  static const double initialSpeed = 350.0;
-  static const double maxSpeed = 700.0;
-  static const double speedIncreaseRate = 10.0;
   static const double jumpForce = 620.0;
+
+  // Player-driven Movement (the world scrolls only while a control is held)
+  static const double maxRunSpeed = 420.0;
+  static const double maxBackSpeed = 260.0;
+  static const double moveAcceleration = 2200.0;
+  static const double moveDeceleration = 2800.0;
+  static const double movingThreshold = 20.0;
 
   // Dino Dimensions (larger for more detail)
   static const double dinoWidth = 64.0;
   static const double dinoHeight = 68.0;
   static const double dinoGroundYOffset = 10.0;
 
-  // Spawning
-  static const double initialSpawnTimerLimit = 1.6;
-  static const double minSpawnTimerLimit = 0.8;
+  // Spawning (measured in pixels of world laid out, not seconds elapsed)
+  static const double initialSpawnDistance = 560.0;
+  static const double minSpawnDistance = 300.0;
+  static const double spawnDistanceJitter = 180.0;
+  static const double spawnRampScore = 400.0;
   static const double obstacleSpawnChanceBird = 0.3;
+
+  // How far past each screen edge the world stays generated and instantiated
+  static const double worldStreamMargin = 400.0;
+
+  // Scoring (forward pixels per point)
+  static const double scoreDistanceDivisor = 35.0;
 
   // Premium Color Palette
   static const Color bgDark = Color(0xFF050B18);

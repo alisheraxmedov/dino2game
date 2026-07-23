@@ -98,23 +98,41 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     super.update(dt);
     if (game.isGameOver || game.isIntro) return;
 
-    final speed = game.currentSpeed;
-    _scrollOffset = (_scrollOffset + speed * dt) % 60.0;
+    // Signed speed: the grid and scatter run either way the player walks
+    final speed = game.worldSpeed;
+    _scrollOffset = _positiveMod(_scrollOffset + speed * dt, 60.0);
+    // Sway keeps breathing even while the player stands still
     _grassTime += dt;
 
+    // Recycle margin sits outside every respawn position, so a blade that just
+    // wrapped can never trip the opposite edge on the very next frame
     final screenWidth = game.size.x;
+    const double margin = 100.0;
     for (int i = 0; i < _grassBlades.length; i++) {
-      _grassBlades[i].x -= speed * dt * 0.7;
-      if (_grassBlades[i].x < -10) {
-        _grassBlades[i].x = screenWidth + _random.nextDouble() * 50;
+      final blade = _grassBlades[i];
+      blade.x -= speed * dt * 0.7;
+      if (blade.x < -margin) {
+        blade.x = screenWidth + _random.nextDouble() * 50;
+      } else if (blade.x > screenWidth + margin) {
+        blade.x = -_random.nextDouble() * 50;
       }
     }
     for (int i = 0; i < _rocks.length; i++) {
-      _rocks[i].x -= speed * dt * 0.5;
-      if (_rocks[i].x < -10) {
-        _rocks[i].x = screenWidth + _random.nextDouble() * 80;
+      final rock = _rocks[i];
+      rock.x -= speed * dt * 0.5;
+      if (rock.x < -margin) {
+        rock.x = screenWidth + _random.nextDouble() * 80;
+      } else if (rock.x > screenWidth + margin) {
+        rock.x = -_random.nextDouble() * 80;
       }
     }
+  }
+
+  /// Keeps a wrapped phase inside [0, range) whichever direction it drifts,
+  /// so a negative scroll delta never flips the grid inside out.
+  double _positiveMod(double value, double range) {
+    final result = value % range;
+    return result < 0 ? result + range : result;
   }
 
   @override

@@ -148,6 +148,9 @@ class GameOverOverlay extends StatelessWidget {
 
                 InkWell(
                   onTap: game.startGame,
+                  // Keep keyboard focus on the canvas so REPLAY hands control
+                  // straight back to the arrow keys
+                  canRequestFocus: false,
                   borderRadius: BorderRadius.circular(18.0),
                   child: Container(
                     width: double.infinity,

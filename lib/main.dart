@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'constants/game_constants.dart';
 import 'game/dino_game.dart';
+import 'widgets/controls_overlay.dart';
 import 'widgets/game_over_overlay.dart';
 import 'widgets/hud_overlay.dart';
 import 'widgets/main_menu_overlay.dart';
@@ -40,6 +41,18 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late final DinoGame _game;
 
+  /// Owned here rather than left to GameWidget's internal node, so focus can be
+  /// handed back to the canvas after an overlay button takes it.
+  final FocusNode _gameFocusNode = FocusNode(debugLabel: 'dino-game-canvas');
+
+  /// Tapping START or REPLAY focuses that button, which silently cuts the canvas
+  /// off from the keyboard. Reclaim focus once the tap's frame has settled.
+  void _restoreGameFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _gameFocusNode.requestFocus();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +66,7 @@ class _GameScreenState extends State<GameScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     // 3. Instantiate the game engine exactly ONCE in state initialization
-    _game = DinoGame();
+    _game = DinoGame()..onRequestFocus = _restoreGameFocus;
   }
 
   @override
@@ -66,6 +79,7 @@ class _GameScreenState extends State<GameScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _gameFocusNode.dispose();
     super.dispose();
   }
 
@@ -75,14 +89,30 @@ class _GameScreenState extends State<GameScreen> {
       body: SafeArea(
         top: false,
         bottom: false,
-        child: GameWidget<DinoGame>(
-          game: _game,
-          overlayBuilderMap: {
-            'MainMenu': (context, game) => MainMenuOverlay(game: game),
-            'GameOver': (context, game) => GameOverOverlay(game: game),
-            'HUD': (context, game) => HudOverlay(game: game),
-          },
-          initialActiveOverlays: const ['MainMenu', 'HUD'],
+        // Safety net: key events bubble up from whichever descendant holds focus,
+        // so even if an overlay button ends up owning it the arrow keys still
+        // reach the game. GameWidget handles them first when it has focus, and a
+        // handled event never propagates here, so no key is processed twice.
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: (node, event) => _game.onKeyEvent(
+            event,
+            HardwareKeyboard.instance.logicalKeysPressed,
+          ),
+          child: GameWidget<DinoGame>(
+            game: _game,
+            focusNode: _gameFocusNode,
+            autofocus: true,
+            overlayBuilderMap: {
+              'MainMenu': (context, game) => MainMenuOverlay(game: game),
+              'GameOver': (context, game) => GameOverOverlay(game: game),
+              'HUD': (context, game) => HudOverlay(game: game),
+              // Added by DinoGame.startGame(), so it never covers the menus
+              'Controls': (context, game) => ControlsOverlay(game: game),
+            },
+            initialActiveOverlays: const ['MainMenu', 'HUD'],
+          ),
         ),
       ),
     );

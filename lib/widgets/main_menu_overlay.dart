@@ -133,7 +133,9 @@ class MainMenuOverlay extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      _buildInstructionRow(Icons.touch_app_rounded, 'Tap Screen / Space to Jump'),
+                      _buildInstructionRow(Icons.swap_horiz_rounded, '←  →  Hold to Move  •  Nothing Held = Stand Still'),
+                      const SizedBox(height: 12.0),
+                      _buildInstructionRow(Icons.touch_app_rounded, 'Space / Tap JUMP to Leap'),
                       const SizedBox(height: 12.0),
                       _buildInstructionRow(Icons.warning_amber_rounded, 'Avoid Neon Cacti & Pterodactyls'),
                     ],
@@ -143,6 +145,9 @@ class MainMenuOverlay extends StatelessWidget {
 
                 InkWell(
                   onTap: game.startGame,
+                  // Never take keyboard focus off the canvas — the arrow keys
+                  // have to keep reaching the game after this is clicked
+                  canRequestFocus: false,
                   borderRadius: BorderRadius.circular(18.0),
                   child: Container(
                     width: double.infinity,

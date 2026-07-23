@@ -157,11 +157,17 @@ class ParallaxBackground extends PositionComponent with HasGameReference<DinoGam
 
     if (game.isGameOver || game.isIntro) return;
 
-    final speed = game.currentSpeed;
+    // Signed speed: the ridges drift back the other way when the player reverses
+    final speed = game.worldSpeed;
     _farMountainScroll -= speed * 0.012 * dt;
     _nearMountainScroll -= speed * 0.035 * dt;
-    if (_farMountainScroll <= -size.x) _farMountainScroll += size.x;
-    if (_nearMountainScroll <= -size.x) _nearMountainScroll += size.x;
+
+    // The layers are drawn in two passes at `scroll` and `scroll + size.x`, so the
+    // phase has to stay in [-size.x, 0) — wrap it from both ends
+    if (_farMountainScroll < -size.x) _farMountainScroll += size.x;
+    if (_farMountainScroll >= 0) _farMountainScroll -= size.x;
+    if (_nearMountainScroll < -size.x) _nearMountainScroll += size.x;
+    if (_nearMountainScroll >= 0) _nearMountainScroll -= size.x;
   }
 
   @override

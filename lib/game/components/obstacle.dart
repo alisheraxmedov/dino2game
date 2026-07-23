@@ -8,13 +8,23 @@ import '../dino_game.dart';
 abstract class Obstacle extends PositionComponent with CollisionCallbacks, HasGameReference<DinoGame> {
   final double groundRelativeY;
 
-  Obstacle({required Vector2 size, required double groundY, required this.groundRelativeY})
-      : super(size: size, priority: 2) {
-    position = Vector2(0, groundY);
+  /// Anchored position in world space. Screen X is derived from it every frame,
+  /// so an obstacle never drifts and is still standing exactly where it was when
+  /// the player walks back over that stretch of ground.
+  final double worldX;
+
+  Obstacle({
+    required Vector2 size,
+    required double groundY,
+    required this.groundRelativeY,
+    required this.worldX,
+  }) : super(size: size, priority: 2) {
+    position = Vector2(worldX, groundY);
   }
 
   @override
   Future<void> onLoad() async {
+    position.x = worldX - game.worldOffset;
     add(RectangleHitbox(
       position: Vector2(4, 4),
       size: Vector2(size.x - 8, size.y - 8),
@@ -22,17 +32,11 @@ abstract class Obstacle extends PositionComponent with CollisionCallbacks, HasGa
   }
 
   @override
-  void onGameResize(Vector2 size) {
-    super.onGameResize(size);
-    if (position.x == 0) position.x = size.x + 50;
-  }
-
-  @override
   void update(double dt) {
     super.update(dt);
-    if (game.isGameOver || game.isIntro) return;
-    position.x -= game.currentSpeed * dt;
-    if (position.x + size.x < 0) removeFromParent();
+    // The camera moves, the world does not: forward pushes obstacles left,
+    // reversing brings them back in from the left edge.
+    position.x = worldX - game.worldOffset;
   }
 }
 
@@ -58,7 +62,7 @@ class Cactus extends Obstacle {
   late final Paint _shadowPaint;
   final Path _cactusPath = Path();
 
-  Cactus({required this.type, required double screenHeight})
+  Cactus({required this.type, required double screenHeight, required super.worldX})
       : super(
           size: Vector2(type.width, type.height),
           groundY: screenHeight - GameConstants.dinoGroundYOffset - type.height,
@@ -192,7 +196,7 @@ class Bird extends Obstacle {
   late final Paint _shadowPaint;
   final Path _birdPath = Path();
 
-  Bird({required this.heightLevel, required double screenHeight})
+  Bird({required this.heightLevel, required double screenHeight, required super.worldX})
       : super(
           size: Vector2(44, 30),
           groundY: screenHeight -

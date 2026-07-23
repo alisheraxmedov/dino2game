@@ -16,7 +16,7 @@ class GameConstants {
   // close to the old hand-drawn dino to preserve every obstacle clearance.
   static const double dinoWidth = 52.0;
   static const double dinoHeight = 72.0;
-  static const double dinoGroundYOffset = 10.0;
+  static const double dinoGroundYOffset = 30.0;
 
   // Runner sprite frames. The folder comes from the selected GameCharacter.
   static const double runnerWalkFrameTime = 0.13;

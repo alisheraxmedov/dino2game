@@ -97,7 +97,7 @@ class Foliage extends PositionComponent with HasGameReference<DinoGame> {
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    this.size = Vector2(size.x, Ground.bandHeight);
+    this.size = Vector2(size.x, Ground.earthHeight);
 
     // The scatter is generated once: replanting on every resize would make the
     // whole field jump around whenever the window changes shape.

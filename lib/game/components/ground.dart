@@ -29,9 +29,9 @@ class _GroundTerrainLoader extends Component {
 }
 
 class Ground extends PositionComponent with HasGameReference<DinoGame> {
-  /// Height of the ground plane: local y 0 is the horizon line, y [bandHeight]
-  /// is the front edge the runner stands on.
-  static const double bandHeight = 100.0;
+  static const double earthHeight = 140.0;
+  static const double bandHeight = earthHeight;
+  static const double terrainSpriteHeight = 30.0;
 
   static const List<double> _terrainSourceWidths = [380, 200];
   static const List<double> _terrainSourceHeights = [94, 100];
@@ -121,10 +121,10 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    this.size = Vector2(size.x, bandHeight);
+    this.size = Vector2(size.x, earthHeight);
     position = Vector2(
       0,
-      size.y - GameConstants.dinoGroundYOffset - bandHeight,
+      size.y - GameConstants.dinoGroundYOffset - earthHeight,
     );
 
     if (_rocks.isEmpty) {
@@ -132,7 +132,7 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
         _rocks.add(
           GroundRock(
             x: _random.nextDouble() * size.x,
-            y: _random.nextDouble() * 6 + 4,
+            y: 10 + _random.nextDouble() * (earthHeight - 20),
             w: _random.nextDouble() * 6 + 3,
             h: _random.nextDouble() * 3 + 2,
           ),
@@ -179,8 +179,8 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     if (sprites.length != 2) return;
 
     final logicalWidths = <double>[
-      _terrainSourceWidths[0] * bandHeight / _terrainSourceHeights[0],
-      _terrainSourceWidths[1] * bandHeight / _terrainSourceHeights[1],
+      _terrainSourceWidths[0] * terrainSpriteHeight / _terrainSourceHeights[0],
+      _terrainSourceWidths[1] * terrainSpriteHeight / _terrainSourceHeights[1],
     ];
     final patternWidth = logicalWidths[0] + logicalWidths[1];
     var x = _positiveMod(-game.worldOffset, patternWidth) - patternWidth;
@@ -189,8 +189,8 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
       for (var index = 0; index < sprites.length; index++) {
         sprites[index].render(
           canvas,
-          position: Vector2(x, 0),
-          size: Vector2(logicalWidths[index], bandHeight),
+          position: Vector2(x, earthHeight),
+          size: Vector2(logicalWidths[index], terrainSpriteHeight),
         );
         x += logicalWidths[index];
       }
@@ -209,14 +209,15 @@ class Ground extends PositionComponent with HasGameReference<DinoGame> {
     _rockPaint.color = theme.rock;
 
     // 1. Ground terrain gradient fill
+    final terrainHeight = size.y + GameConstants.dinoGroundYOffset;
     final terrainPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [theme.groundTop, theme.groundMid, theme.groundBottom],
         stops: const [0.0, 0.4, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), terrainPaint);
+      ).createShader(Rect.fromLTWH(0, 0, size.x, terrainHeight));
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.x, terrainHeight), terrainPaint);
 
     // 2. Horizon glow line
     canvas.drawLine(const Offset(0, 0), Offset(size.x, 0), _horizonGlowPaint);

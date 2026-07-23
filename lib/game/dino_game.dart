@@ -575,8 +575,7 @@ class DinoGame extends FlameGame
     }
 
     final kind = switch (roll) {
-      < 0.50 => WorldEntityKind.cactus,
-      < 0.68 => WorldEntityKind.spikeMan,
+      < 0.68 => WorldEntityKind.cactus,
       < 0.86 => WorldEntityKind.springMan,
       _ when difficulty > 150 => WorldEntityKind.wingMan,
       _ => WorldEntityKind.cactus,

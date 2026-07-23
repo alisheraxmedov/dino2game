@@ -44,6 +44,9 @@ flutter:
     # Kenney "Foliage Sprites" (CC0), trimmed and scaled down — white
     # silhouettes the ground layer tints through the current theme.
     - assets/images/foliage/
+    - assets/images/environment/
+    - assets/images/enemies/
+    - assets/images/items/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

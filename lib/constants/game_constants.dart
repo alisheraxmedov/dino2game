@@ -12,10 +12,15 @@ class GameConstants {
   static const double moveDeceleration = 2800.0;
   static const double movingThreshold = 20.0;
 
-  // Dino Dimensions (larger for more detail)
-  static const double dinoWidth = 64.0;
-  static const double dinoHeight = 68.0;
+  // Runner Dimensions. The Kenney sprite sheet is 80x110, so the height is kept
+  // close to the old hand-drawn dino to preserve every obstacle clearance.
+  static const double dinoWidth = 52.0;
+  static const double dinoHeight = 72.0;
   static const double dinoGroundYOffset = 10.0;
+
+  // Runner sprite frames (resolved under Flame's assets/images/ prefix)
+  static const String runnerSpritePath = 'characters/player';
+  static const double runnerWalkFrameTime = 0.13;
 
   // Spawning (measured in pixels of world laid out, not seconds elapsed)
   static const double initialSpawnDistance = 560.0;

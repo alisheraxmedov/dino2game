@@ -83,6 +83,32 @@ class HudOverlay extends StatelessWidget {
                 borderColor: theme.highlight.withAlpha(40),
                 child: Row(
                   children: [
+                    Icon(
+                      Icons.monetization_on_rounded,
+                      color: theme.highlight,
+                      size: 16.0,
+                    ),
+                    const SizedBox(width: 4.0),
+                    ValueListenableBuilder<int>(
+                      valueListenable: game.coinNotifier,
+                      builder: (context, coins, child) {
+                        return Text(
+                          coins.toString(),
+                          style: TextStyle(
+                            fontSize: 14.0,
+                            fontWeight: FontWeight.w800,
+                            color: theme.highlight,
+                            fontFamily: 'monospace',
+                          ),
+                        );
+                      },
+                    ),
+                    Container(
+                      width: 1,
+                      height: 16,
+                      margin: const EdgeInsets.symmetric(horizontal: 10.0),
+                      color: theme.accent.withAlpha(60),
+                    ),
                     if (game.highScore > 0) ...[
                       Text(
                         'HI ${game.highScore.toString().padLeft(5, '0')}',

@@ -17,6 +17,7 @@ import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
 import 'package:dino2game/game/world_layout.dart';
 import 'package:dino2game/widgets/controls_overlay.dart';
+import 'package:dino2game/widgets/hud_overlay.dart';
 import 'package:dino2game/widgets/settings_overlay.dart';
 
 /// Stub overlay builders — the real widgets are exercised by the widget test.
@@ -331,6 +332,24 @@ void main() {
       prefs.getString(GameConstants.characterKey),
       GameCharacter.zombie.id,
     );
+  });
+
+  testWidgets('the HUD renders the collected coin count', (
+    WidgetTester tester,
+  ) async {
+    final game = DinoGame();
+    game.coinNotifier.value = 3;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(children: [HudOverlay(game: game)]),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.monetization_on_rounded), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
   });
 
   testWidgets('arrow keys reach the game even when the canvas has lost focus', (

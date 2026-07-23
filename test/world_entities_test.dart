@@ -5,6 +5,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dino2game/game/components/coin.dart';
 import 'package:dino2game/game/components/obstacle.dart';
 import 'package:dino2game/game/dino_game.dart';
 import 'package:dino2game/game/world_layout.dart';
@@ -250,7 +251,81 @@ void main() {
     expect(game.children.whereType<Obstacle>(), isEmpty);
   });
 
-  test('transitional streaming renders hazards but not coins', () async {
+  test('collecting the same coin increments the counter only once', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = WorldEntitySpec(
+      worldX: game.worldOffset + game.dino.position.x,
+      kind: WorldEntityKind.coin,
+    );
+    final coin = Coin(spec: spec, screenHeight: game.size.y);
+    game.add(coin);
+    await game.ready();
+
+    coin.collect();
+    coin.collect();
+
+    expect(game.currentCoins, 1);
+    expect(game.coinNotifier.value, 1);
+    expect(spec.collected, isTrue);
+  });
+
+  test('colliding with a coin does not end the active run', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = WorldEntitySpec(
+      worldX: game.worldOffset + game.dino.position.x,
+      kind: WorldEntityKind.coin,
+    );
+    final coin = Coin(spec: spec, screenHeight: game.size.y);
+    game.add(coin);
+    await game.ready();
+
+    game.dino.onCollisionStart(<Vector2>{}, coin);
+
+    expect(game.isPlaying, isTrue);
+    expect(game.currentCoins, 1);
+    expect(spec.collected, isTrue);
+  });
+
+  test('a collected streamed coin never respawns', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final spec = WorldEntitySpec(worldX: 900, kind: WorldEntityKind.coin);
+    game.addWorldSpecForTest(spec);
+    game.streamWorldForTest();
+    final coin = spec.live! as Coin;
+    coin.collect();
+
+    game.worldOffset = 2000;
+    game.streamWorldForTest();
+    game.worldOffset = 500;
+    game.streamWorldForTest();
+
+    expect(spec.collected, isTrue);
+    expect(spec.live, isNull);
+  });
+
+  test('a new run and menu return reset the coin count', () async {
+    final game = await _bootGame();
+    game.startGame();
+    final first = WorldEntitySpec(worldX: 200, kind: WorldEntityKind.coin);
+    expect(game.collectCoin(first), isTrue);
+    expect(game.currentCoins, 1);
+
+    game.startGame();
+    expect(game.currentCoins, 0);
+    expect(game.coinNotifier.value, 0);
+
+    final second = WorldEntitySpec(worldX: 300, kind: WorldEntityKind.coin);
+    expect(game.collectCoin(second), isTrue);
+    game.returnToMenu();
+
+    expect(game.currentCoins, 0);
+    expect(game.coinNotifier.value, 0);
+  });
+
+  test('streaming renders hazards and coins but not platforms', () async {
     final game = await _bootGame(random: Random(7));
     game.startGame();
     game.setInputDirection(1);
@@ -260,12 +335,10 @@ void main() {
       (slot) => slot.kind != WorldEntityKind.coin && slot.live != null,
     );
     expect(liveHazards, isNotEmpty);
-    expect(
-      game.worldLayout
-          .where((slot) => slot.kind == WorldEntityKind.coin)
-          .every((slot) => slot.live == null),
-      isTrue,
+    final liveCoins = game.worldLayout.where(
+      (slot) => slot.kind == WorldEntityKind.coin && slot.live is Coin,
     );
+    expect(liveCoins, isNotEmpty);
     expect(
       game.platformLayout.every((platform) => platform.live == null),
       isTrue,

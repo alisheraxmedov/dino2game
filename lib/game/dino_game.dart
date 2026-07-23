@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/game_characters.dart';
 import '../constants/game_constants.dart';
 import '../constants/game_theme.dart';
+import 'components/coin.dart';
 import 'components/dino.dart';
 import 'components/ground.dart';
 import 'components/obstacle.dart';
@@ -58,6 +59,9 @@ class DinoGame extends FlameGame
   int currentScore = 0;
   int highScore = 0;
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
+  int _currentCoins = 0;
+  int get currentCoins => _currentCoins;
+  final ValueNotifier<int> coinNotifier = ValueNotifier<int>(0);
 
   /// Derived movement state for the HUD: -1 reverse, 0 idle, +1 forward.
   final ValueNotifier<int> directionNotifier = ValueNotifier<int>(0);
@@ -141,6 +145,7 @@ class DinoGame extends FlameGame
     _frontierLeft = 0.0;
     currentScore = 0;
     scoreNotifier.value = 0;
+    _resetCoinCount();
     directionNotifier.value = 0;
 
     // Every run opens at night and cycles from there
@@ -232,7 +237,7 @@ class DinoGame extends FlameGame
       // Lay out fresh terrain ahead of whichever way the player is facing, then
       // build and tear down components as their world slot enters and leaves view
       _ensureLayout();
-      _streamObstacles();
+      _streamWorld();
     } else {
       // Menus and game over freeze the world outright
       worldSpeed = 0.0;
@@ -325,6 +330,7 @@ class DinoGame extends FlameGame
     _maxDistance = 0.0;
     currentScore = 0;
     scoreNotifier.value = 0;
+    _resetCoinCount();
     _resetTheme();
     dino.reset();
 
@@ -335,19 +341,41 @@ class DinoGame extends FlameGame
 
   void _clearWorld() {
     for (final slot in _layout) {
-      slot.live?.removeFromParent();
       slot.live = null;
     }
     for (final platform in _platformLayout) {
       platform.live?.removeFromParent();
       platform.live = null;
     }
-    for (final obstacle in children.whereType<Obstacle>().toList()) {
-      obstacle.removeFromParent();
+    final liveWorldComponents = children
+        .where((child) => child is Obstacle || child is Coin)
+        .toList();
+    for (final component in liveWorldComponents) {
+      component.removeFromParent();
     }
     _layout.clear();
     _platformLayout.clear();
   }
+
+  bool collectCoin(WorldEntitySpec spec) {
+    if (spec.kind != WorldEntityKind.coin || spec.collected) return false;
+    spec.collected = true;
+    spec.live = null;
+    _currentCoins++;
+    coinNotifier.value = _currentCoins;
+    return true;
+  }
+
+  void _resetCoinCount() {
+    _currentCoins = 0;
+    coinNotifier.value = 0;
+  }
+
+  @visibleForTesting
+  void addWorldSpecForTest(WorldEntitySpec spec) => _layout.add(spec);
+
+  @visibleForTesting
+  void streamWorldForTest() => _streamWorld();
 
   /// Called by the on-screen touch pad. -1 backward, 0 idle, +1 forward.
   void setInputDirection(int dir) {
@@ -379,21 +407,29 @@ class DinoGame extends FlameGame
     }
   }
 
-  /// Instantiates and disposes obstacle components as their world slot enters or
-  /// leaves the streaming window. Specs outlive their components, so an obstacle
-  /// removed off-screen comes back identical when the player returns to it.
-  void _streamObstacles() {
+  /// Instantiates and disposes world components as their slot enters or leaves
+  /// the streaming window. Specs outlive their components, while collected coin
+  /// specs remain permanently empty for the rest of the run.
+  void _streamWorld() {
     final double from = worldOffset - GameConstants.worldStreamMargin;
     final double to = worldOffset + size.x + GameConstants.worldStreamMargin;
 
     for (final spec in _layout) {
+      if (spec.collected) {
+        spec.live?.removeFromParent();
+        spec.live = null;
+        continue;
+      }
+
       final bool inWindow = spec.worldX >= from && spec.worldX <= to;
 
       if (inWindow && spec.live == null) {
-        final obstacle = _obstacleFor(spec);
-        if (obstacle != null) {
-          spec.live = obstacle;
-          add(obstacle);
+        final component = spec.kind == WorldEntityKind.coin
+            ? Coin(spec: spec, screenHeight: size.y)
+            : _obstacleFor(spec);
+        if (component != null) {
+          spec.live = component;
+          add(component);
         }
       } else if (!inWindow && spec.live != null) {
         spec.live!.removeFromParent();
@@ -550,6 +586,12 @@ class DinoGame extends FlameGame
       ),
       WorldEntityKind.coin => null,
     };
+  }
+
+  @override
+  void onRemove() {
+    coinNotifier.dispose();
+    super.onRemove();
   }
 
   @override

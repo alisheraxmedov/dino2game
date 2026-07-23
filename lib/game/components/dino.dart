@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../constants/game_characters.dart';
 import '../../constants/game_constants.dart';
 import '../dino_game.dart';
+import 'coin.dart';
 import 'obstacle.dart';
 
 class DinoParticle {
@@ -163,7 +164,9 @@ class Dino extends PositionComponent with CollisionCallbacks, HasGameReference<D
   @override
   void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollisionStart(intersectionPoints, other);
-    if (other is Obstacle) {
+    if (other is Coin) {
+      other.collect();
+    } else if (other is Obstacle) {
       game.triggerGameOver();
     }
   }
